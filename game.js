@@ -814,3 +814,451 @@ function renderQuestDetail(questId) {
     }, 1000);
   }
 }
+
+// ── PART 4: ITEMS, LORE/CODEX, EVENT LISTENERS, APP INIT ─────────────────
+
+// ── ITEM DEFINITIONS ───────────────────────────────────────────────────────
+
+const ALL_ITEMS = [
+  { id: 'worn_quill',      name: 'Worn Quill',           icon: '✒', type: 'passive',    rarity: 'common',    description: 'A quill worn smooth by many outlines.',         effect: { stat: 'outlineXP', bonus: 5  } },
+  { id: 'momos_lens',      name: "Momo's Lens",           icon: '🔍', type: 'passive',    rarity: 'rare',      description: "Momo's analytical optics. AI scores feel fairer.", effect: { stat: 'aiScore', bonus: 3  } },
+  { id: 'scholars_inkpot', name: "Scholar's Inkpot",      icon: '🖋', type: 'consumable', rarity: 'common',    description: 'One use. Distilled focus in liquid form.',          effect: { stat: 'flatXP',  bonus: 50 } },
+  { id: 'thesis_shard',    name: 'Thesis Shard',          icon: '💎', type: 'passive',    rarity: 'rare',      description: 'A fragment of a perfect argument.',                effect: { stat: 'finalXP', bonus: 10 } },
+  { id: 'crystal_arg',     name: 'Crystallized Argument', icon: '⚡', type: 'passive',    rarity: 'legendary', description: 'Pure condensed logic. All XP flows faster.',        effect: { stat: 'allXP',   bonus: 20 } },
+  { id: 'blade_fragment',  name: 'Fragment of the Blade', icon: '🗡', type: 'passive',    rarity: 'legendary', description: 'A sliver of the Academic Weapon itself.',           effect: { stat: 'allStats', bonus: 1 } },
+];
+
+function giveItem(itemId) {
+  const def = ALL_ITEMS.find(i => i.id === itemId);
+  if (!def) return;
+  if (STATE.character.inventory.find(i => i.id === itemId)) return; // no dupes for passives
+  const item = { ...def, acquiredAt: Date.now() };
+  STATE.character.inventory.push(item);
+  saveGame();
+  showItemGetOverlay(item);
+}
+
+function equipItem(itemId) {
+  const item = STATE.character.inventory.find(i => i.id === itemId);
+  if (!item || item.type !== 'passive') return;
+  STATE.character.equippedItem = item;
+  saveGame();
+  renderInventory();
+  renderCharacterSheet();
+  showXPToast(`Equipped: ${item.name}`, '');
+}
+
+function useItem(itemId) {
+  const idx = STATE.character.inventory.findIndex(i => i.id === itemId);
+  if (idx === -1) return;
+  const item = STATE.character.inventory[idx];
+  if (item.type !== 'consumable') return;
+  if (item.effect.stat === 'flatXP') awardXP(item.effect.bonus, item.name);
+  if (item.effect.stat === 'allStats') {
+    ['focus','wit','grit','lore'].forEach(s => STATE.character.stats[s]++);
+    saveGame();
+    renderCharacterSheet();
+  }
+  STATE.character.inventory.splice(idx, 1);
+  saveGame();
+  renderInventory();
+}
+
+function renderInventory() {
+  const grid = document.getElementById('inventory-grid');
+  if (!grid) return;
+  const inv = STATE.character.inventory;
+  if (!inv.length) {
+    grid.innerHTML = '<div style="color:var(--dim);font-size:18px">Your bag is empty. Complete quests and milestones to earn items.</div>';
+    return;
+  }
+  grid.innerHTML = inv.map(item => {
+    const isEquipped = STATE.character.equippedItem?.id === item.id;
+    return `<div class="item-card ${item.rarity}">
+      <div class="item-icon">${item.icon}</div>
+      <div class="item-name">${item.name}${isEquipped ? ' ★' : ''}</div>
+      <div class="item-rarity ${item.rarity}">${item.rarity.toUpperCase()}</div>
+      <div class="item-desc">${item.description}</div>
+      <div class="item-actions">
+        ${item.type === 'passive'    ? `<button class="pixel-btn small" onclick="equipItem('${item.id}')">${isEquipped ? 'EQUIPPED' : 'EQUIP'}</button>` : ''}
+        ${item.type === 'consumable' ? `<button class="pixel-btn small primary" onclick="useItem('${item.id}')">USE</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showItemGetOverlay(item) {
+  document.getElementById('item-get-icon').textContent   = item.icon;
+  document.getElementById('item-get-name').textContent   = item.name;
+  document.getElementById('item-get-rarity').textContent = item.rarity.toUpperCase();
+  document.getElementById('item-get-rarity').className   = `item-get-rarity ${item.rarity}`;
+  document.getElementById('item-get-desc').textContent   = item.description;
+  document.getElementById('overlay-item').classList.add('active');
+}
+
+function checkItemUnlock(trigger, value) {
+  if (trigger === 'quest_complete') giveItem('worn_quill');
+  if (trigger === 'ai_score' && value >= 80) giveItem('momos_lens');
+  if (trigger === 'streak' && value >= 3) giveItem('scholars_inkpot');
+  if (trigger === 'level' && value >= 15) giveItem('thesis_shard');
+  if (trigger === 'level' && value >= 30) giveItem('crystal_arg');
+  if (trigger === 'level' && value >= 40) giveItem('blade_fragment');
+}
+
+// ── LORE / CODEX ───────────────────────────────────────────────────────────
+
+const LORE_FRAGMENTS = [
+  { id: 'lore_l1',       trigger: 'level',         value: 1,  title: 'Fragment I',     text: '"They say the blades are made of argument itself — the kind that cannot be refuted."' },
+  { id: 'lore_quest1',   trigger: 'quest_complete', value: 1,  title: 'Fragment II',    text: 'A professor\'s margin note: "Some students write. A rare few forge."' },
+  { id: 'lore_l10',      trigger: 'level',         value: 10, title: 'Fragment III',   text: 'An ancient text: "The Weapons were last seen in the hands of one who never stopped revising."' },
+  { id: 'lore_ai90',     trigger: 'ai_score',      value: 90, title: 'Fragment IV',    text: 'Momo\'s partial blueprint — it looks like a dagger, but the material is listed as "crystallized thesis."' },
+  { id: 'lore_l30',      trigger: 'level',         value: 30, title: 'Fragment V',     text: '"The blades respond to focus. They grow sharper the longer their wielder studies."' },
+  { id: 'lore_streak7',  trigger: 'streak',        value: 7,  title: 'Fragment VI',    text: 'A worn journal: "I have written every day for seven days. The air around my desk feels different. Charged."' },
+  { id: 'lore_l50',      trigger: 'level',         value: 50, title: 'THE FINAL TRUTH', text: 'The daggers materialize. They were never hidden — they were being forged. By you. By every word you wrote. You have become the weapon.' },
+];
+
+function checkLoreUnlock(trigger, value) {
+  let revealed = false;
+  for (const frag of LORE_FRAGMENTS) {
+    if (STATE.lore.unlockedFragments.includes(frag.id)) continue;
+    if (frag.trigger !== trigger) continue;
+    const match =
+      (trigger === 'level'         && value >= frag.value) ||
+      (trigger === 'quest_complete' && STATE.quests.filter(q => q.stage === 'complete').length >= frag.value) ||
+      (trigger === 'ai_score'      && value >= frag.value) ||
+      (trigger === 'streak'        && STATE.character.streak >= frag.value);
+    if (match) {
+      STATE.lore.unlockedFragments.push(frag.id);
+      saveGame();
+      if (!revealed) { showLoreOverlay(frag); revealed = true; }
+    }
+  }
+}
+
+function showLoreOverlay(frag) {
+  document.getElementById('lore-body').textContent = frag.text;
+  document.getElementById('overlay-lore').classList.add('active');
+}
+
+function renderCodex() {
+  const list = document.getElementById('codex-list');
+  if (!list) return;
+  list.innerHTML = LORE_FRAGMENTS.map((frag, i) => {
+    const unlocked = STATE.lore.unlockedFragments.includes(frag.id);
+    return `<div class="codex-fragment ${unlocked ? '' : 'locked'}">
+      <div class="codex-fragment-num">${frag.title}</div>
+      <div class="codex-fragment-text">${unlocked ? frag.text : '??? Collect more fragments to reveal this entry ???'}</div>
+    </div>`;
+  }).join('');
+}
+
+function showFinalReveal() {
+  const overlay = document.getElementById('overlay-levelup');
+  overlay.classList.remove('active');
+  const body = document.querySelector('.levelup-content');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="final-reveal">
+      <div class="final-reveal-title">ACADEMIC WEAPON</div>
+      <div class="final-reveal-daggers">🗡✨🗡</div>
+      <div class="final-reveal-text">
+        The daggers were never hidden.<br>
+        They were being forged —<br>
+        by every outline you drafted,<br>
+        every revision you made,<br>
+        every essay you submitted.<br><br>
+        <strong>You have become the weapon.</strong>
+      </div>
+      <button class="pixel-btn primary" id="btn-levelup-close">CLAIM YOUR TITLE</button>
+    </div>`;
+  overlay.classList.add('active');
+  document.getElementById('btn-levelup-close').addEventListener('click', () => {
+    overlay.classList.remove('active');
+    showScreen('screen-hub');
+  });
+}
+
+// ── QUEST CREATION ─────────────────────────────────────────────────────────
+
+function openQuestModal() {
+  populateCourseDropdown();
+  document.getElementById('overlay-new-quest').classList.add('active');
+}
+
+function populateCourseDropdown() {
+  const sel = document.getElementById('quest-course');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- Select Course --</option>' +
+    STATE.courses.map(c => `<option value="${c.id}">${c.name}</option>`).join('') +
+    '<option value="__new__">+ Add New Course…</option>';
+}
+
+function openEditor(questId) {
+  const q = getQuest(questId);
+  if (!q) return;
+  document.getElementById('editor-quest-name').textContent = q.title;
+  document.getElementById('editor-word-goal').textContent  = q.wordCountGoal;
+  document.getElementById('essay-text').value              = q.essayText || '';
+  updateEditorWordCount(q);
+  document.getElementById('btn-editor-back').dataset.questId   = questId;
+  document.getElementById('btn-editor-save').dataset.questId   = questId;
+  document.getElementById('btn-editor-submit').dataset.questId = questId;
+  showScreen('screen-essay-editor');
+}
+
+function updateEditorWordCount(quest) {
+  const text  = document.getElementById('essay-text')?.value || '';
+  const count = text.trim() ? text.trim().split(/\s+/).length : 0;
+  document.getElementById('editor-word-count').textContent = count;
+  const pct   = Math.min(100, (count / quest.wordCountGoal) * 100);
+  const fill  = document.getElementById('wc-fill');
+  if (fill) fill.style.width = pct + '%';
+  return count;
+}
+
+function goToAIEval(questId) {
+  const q = getQuest(questId);
+  if (!q) return;
+  const body = document.getElementById('ai-eval-body');
+  if (!body) return;
+
+  const apiKey = STATE.settings.apiKey;
+  body.innerHTML = `
+    <div style="font-size:18px;color:var(--dim)">Submit your essay to the AI Oracle for evaluation.</div>
+    ${!apiKey ? '<div style="color:var(--red);font-family:var(--font-px);font-size:8px">No API key! Go to CONFIG first.</div>' : ''}
+    <textarea class="pixel-textarea" id="ai-essay-input" placeholder="Paste or type essay here...">${q.essayText || ''}</textarea>
+    <div class="row-buttons">
+      <button class="pixel-btn" onclick="showScreen('screen-quest-detail'); renderQuestDetail('${questId}')">BACK</button>
+      <button class="pixel-btn primary" onclick="submitToOracle('${questId}')">EVALUATE</button>
+    </div>`;
+
+  showScreen('screen-ai-eval');
+}
+
+function submitToOracle(questId) {
+  const q    = getQuest(questId);
+  const text = document.getElementById('ai-essay-input')?.value || '';
+  if (!text.trim()) { showXPToast('No text!', ''); return; }
+  q.essayText = text;
+  saveGame();
+  evaluateEssay(text, q).then(() => wireNavButtons(document.getElementById('ai-eval-body')));
+}
+
+// ── WIRE NAV BUTTONS (data-nav attribute) ──────────────────────────────────
+
+function wireNavButtons(root) {
+  (root || document).querySelectorAll('[data-nav]').forEach(btn => {
+    btn.addEventListener('click', () => showScreen(btn.dataset.nav));
+  });
+}
+
+// ── APP INITIALISATION ─────────────────────────────────────────────────────
+
+function init() {
+  const hasSave = loadGame();
+  wireNavButtons();
+
+  // ── Title screen buttons ──
+  document.getElementById('btn-new-game').addEventListener('click', () => showScreen('screen-char-create'));
+  document.getElementById('btn-continue').addEventListener('click', () => {
+    if (hasSave && STATE.character.name) {
+      checkStreak();
+      checkLoreUnlock('level', STATE.character.level);
+      showScreen('screen-hub');
+    } else {
+      showXPToast('No save found', '');
+    }
+  });
+
+  // ── Character creation ──
+  document.querySelectorAll('.class-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.class-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+    });
+  });
+
+  document.getElementById('btn-confirm-char').addEventListener('click', () => {
+    const name = document.getElementById('input-name').value.trim();
+    const cls  = document.querySelector('.class-card.selected')?.dataset.cls || '';
+    if (!name) { showXPToast('Enter a name!', ''); return; }
+    if (!cls)  { showXPToast('Choose a class!', ''); return; }
+
+    STATE.character.name  = name;
+    STATE.character.cls   = cls;
+    // class stat bonuses
+    const bonuses = { Essayist: 'focus', Debater: 'wit', Researcher: 'lore', Storyteller: 'grit' };
+    if (bonuses[cls]) STATE.character.stats[bonuses[cls]] += 2;
+    checkStreak();
+    saveGame();
+    checkLoreUnlock('level', 1);
+    showScreen('screen-hub');
+    renderCharacterSheet();
+    showMomo('quest_created');
+  });
+
+  // ── Hub nav buttons ──
+  document.getElementById('btn-add-course').addEventListener('click', () => {
+    document.getElementById('overlay-add-course').classList.add('active');
+    document.getElementById('course-name').value = '';
+    document.querySelectorAll('.color-chip').forEach((c,i) => { if(i===0) c.classList.add('selected'); else c.classList.remove('selected'); });
+  });
+
+  document.getElementById('btn-reset-game').addEventListener('click', () => {
+    if (confirm('Reset ALL progress? This cannot be undone.')) {
+      resetGame();
+      showScreen('screen-title');
+    }
+  });
+
+  // ── Add course modal ──
+  let selectedCourseColor = '#FFD700';
+  document.querySelectorAll('.color-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.color-chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      selectedCourseColor = chip.dataset.color;
+    });
+  });
+
+  document.getElementById('btn-cancel-course').addEventListener('click', () => {
+    document.getElementById('overlay-add-course').classList.remove('active');
+  });
+
+  document.getElementById('btn-save-course').addEventListener('click', () => {
+    const name = document.getElementById('course-name').value.trim();
+    if (!name) { showXPToast('Enter a course name!', ''); return; }
+    STATE.courses.push({ id: genId(), name, color: selectedCourseColor, createdAt: Date.now() });
+    saveGame();
+    document.getElementById('overlay-add-course').classList.remove('active');
+    renderCharacterSheet();
+  });
+
+  // ── Quest board ──
+  document.getElementById('btn-new-quest').addEventListener('click', openQuestModal);
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderQuestBoard(btn.dataset.tab);
+    });
+  });
+
+  // ── New quest modal ──
+  document.getElementById('btn-cancel-quest').addEventListener('click', () => {
+    document.getElementById('overlay-new-quest').classList.remove('active');
+  });
+
+  document.getElementById('quest-course').addEventListener('change', e => {
+    if (e.target.value === '__new__') {
+      document.getElementById('overlay-new-quest').classList.remove('active');
+      document.getElementById('overlay-add-course').classList.add('active');
+    }
+  });
+
+  document.getElementById('btn-create-quest').addEventListener('click', () => {
+    const title    = document.getElementById('quest-title').value.trim();
+    const courseId = document.getElementById('quest-course').value;
+    const words    = document.getElementById('quest-words').value;
+    const deadline = document.getElementById('quest-deadline').value;
+    const diff     = document.getElementById('quest-difficulty').value;
+    if (!title)    { showXPToast('Enter a title!', ''); return; }
+    if (!courseId || courseId === '__new__') { showXPToast('Select a course!', ''); return; }
+    if (!deadline) { showXPToast('Set a deadline!', ''); return; }
+    createQuest({ title, courseId, wordCountGoal: words, deadline, difficulty: diff });
+    document.getElementById('overlay-new-quest').classList.remove('active');
+    renderQuestBoard('active');
+    renderCharacterSheet();
+  });
+
+  // ── Essay editor ──
+  document.getElementById('essay-text').addEventListener('input', () => {
+    const questId = document.getElementById('btn-editor-save').dataset.questId;
+    const q = getQuest(questId);
+    if (!q) return;
+    const count = updateEditorWordCount(q);
+    checkWordCountXP(questId, count);
+  });
+
+  document.getElementById('btn-editor-save').addEventListener('click', () => {
+    const questId = document.getElementById('btn-editor-save').dataset.questId;
+    const q = getQuest(questId);
+    if (!q) return;
+    q.essayText = document.getElementById('essay-text').value;
+    q.currentWordCount = updateEditorWordCount(q);
+    saveGame();
+    showXPToast('Saved!', '');
+  });
+
+  document.getElementById('btn-editor-back').addEventListener('click', () => {
+    const questId = document.getElementById('btn-editor-back').dataset.questId;
+    openQuestDetail(questId);
+  });
+
+  document.getElementById('btn-editor-submit').addEventListener('click', () => {
+    const questId = document.getElementById('btn-editor-submit').dataset.questId;
+    const q = getQuest(questId);
+    if (!q) return;
+    q.essayText = document.getElementById('essay-text').value;
+    q.currentWordCount = updateEditorWordCount(q);
+    saveGame();
+    goToAIEval(questId);
+  });
+
+  // ── Settings ──
+  document.getElementById('btn-save-settings').addEventListener('click', () => {
+    STATE.settings.apiKey = document.getElementById('input-api-key').value.trim();
+    saveGame();
+    showXPToast('API key saved!', '');
+    showScreen('screen-hub');
+  });
+
+  // ── Level up overlay close ──
+  document.getElementById('btn-levelup-close').addEventListener('click', () => {
+    document.getElementById('overlay-levelup').classList.remove('active');
+  });
+
+  // ── Lore overlay close ──
+  document.getElementById('btn-lore-close').addEventListener('click', () => {
+    document.getElementById('overlay-lore').classList.remove('active');
+  });
+
+  // ── Item overlay close ──
+  document.getElementById('btn-item-close').addEventListener('click', () => {
+    document.getElementById('overlay-item').classList.remove('active');
+  });
+
+  // ── Momo click to dismiss ──
+  document.getElementById('overlay-momo').addEventListener('click', hideMomo);
+
+  // ── Screen inits ──
+  registerScreenInit('screen-hub', () => {
+    renderCharacterSheet();
+    checkStreak();
+    checkLoreUnlock('streak', STATE.character.streak);
+    checkItemUnlock('streak', STATE.character.streak);
+  });
+
+  registerScreenInit('screen-quest-board', () => {
+    renderQuestBoard('active');
+    renderCourseFilter();
+  });
+
+  registerScreenInit('screen-inventory', renderInventory);
+  registerScreenInit('screen-codex', renderCodex);
+
+  registerScreenInit('screen-settings', () => {
+    document.getElementById('input-api-key').value = STATE.settings.apiKey || '';
+  });
+
+  // ── Restore session ──
+  if (hasSave && STATE.character.name) {
+    checkStreak();
+    showScreen('screen-hub');
+  } else {
+    showScreen('screen-title');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
