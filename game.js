@@ -1080,7 +1080,7 @@ function init() {
 
   document.getElementById('btn-confirm-char').addEventListener('click', () => {
     const name = document.getElementById('input-name').value.trim();
-    const cls  = document.querySelector('.class-card.selected')?.dataset.cls || '';
+    const cls  = document.querySelector('.class-card.selected')?.getAttribute('data-class') || '';
     if (!name) { showXPToast('Enter a name!', ''); return; }
     if (!cls)  { showXPToast('Choose a class!', ''); return; }
 
