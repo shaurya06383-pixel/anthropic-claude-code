@@ -375,3 +375,442 @@ function checkStreak() {
   STATE.character.lastActiveDate = today;
   saveGame();
 }
+
+// ── PART 3: AI ENGINE, MOMO DIALOGUE, RENDER FUNCTIONS ────────────────────
+
+// ── AI ENGINE ─────────────────────────────────────────────────────────────
+
+async function evaluateEssay(essayText, quest) {
+  const apiKey = STATE.settings.apiKey;
+  if (!apiKey) {
+    showAIResult(null, 'No API key configured. Go to CONFIG to add your Anthropic key.');
+    return;
+  }
+
+  showAILoading();
+
+  const diffLabel = quest.difficulty;
+  const prompt = `You are an academic essay evaluator. Score the following essay on four dimensions, each out of 25 points (total 100).
+
+Essay title: "${quest.title}"
+Difficulty level: ${diffLabel}
+
+Dimensions:
+1. thesis (0-25): clarity and strength of the central argument
+2. structure (0-25): logical organisation, paragraph flow, introduction and conclusion
+3. evidence (0-25): use of examples, citations, supporting detail
+4. mechanics (0-25): grammar, spelling, sentence variety, style
+
+Respond ONLY with valid JSON in this exact shape:
+{"thesis":0,"structure":0,"evidence":0,"mechanics":0,"feedback":"one paragraph of constructive feedback"}
+
+Essay:
+${essayText.slice(0, 6000)}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 512,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showAIResult(null, `API error ${res.status}: ${err.error?.message || res.statusText}`);
+      return;
+    }
+
+    const data = await res.json();
+    const raw  = data.content?.[0]?.text || '';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in response');
+    const scores = JSON.parse(jsonMatch[0]);
+
+    // Citation Storm ability: +5 to evidence
+    if (STATE.character.unlockedAbilities.includes('Citation Storm (evidence score +5)')) {
+      scores.evidence = Math.min(25, (scores.evidence || 0) + 5);
+    }
+    // Momo's Lens item: +3 to total
+    const eq = STATE.character.equippedItem;
+    if (eq && eq.id === 'momos_lens') {
+      scores.thesis = Math.min(25, (scores.thesis || 0) + 2);
+      scores.mechanics = Math.min(25, (scores.mechanics || 0) + 1);
+    }
+
+    scores.thesis    = Math.min(25, Math.max(0, scores.thesis    || 0));
+    scores.structure = Math.min(25, Math.max(0, scores.structure || 0));
+    scores.evidence  = Math.min(25, Math.max(0, scores.evidence  || 0));
+    scores.mechanics = Math.min(25, Math.max(0, scores.mechanics || 0));
+    const total = scores.thesis + scores.structure + scores.evidence + scores.mechanics;
+
+    // award XP
+    const mult = DIFF_MULTIPLIER[quest.difficulty] || 1;
+    const penalty = getDeadlinePenalty(quest);
+    const rawXP   = Math.round(total * mult * (1 - penalty));
+    const earned  = awardXP(rawXP, 'AI evaluation');
+    quest.aiScore = total;
+    quest.xpEarned += earned;
+    saveGame();
+
+    showAIResult(scores, null, total, quest);
+    checkLoreUnlock('ai_score', total);
+    checkItemUnlock('ai_score', total);
+
+    if (total >= 85) showMomo('ai_result_high');
+    else             showMomo('ai_result_low');
+
+  } catch (e) {
+    showAIResult(null, `Evaluation failed: ${e.message}`);
+  }
+}
+
+function showAILoading() {
+  const body = document.getElementById('ai-eval-body');
+  if (!body) return;
+  body.innerHTML = '<div class="loading-anim">CONSULTING THE ORACLE...</div>';
+}
+
+function showAIResult(scores, error, total, quest) {
+  const body = document.getElementById('ai-eval-body');
+  if (!body) return;
+
+  if (error) {
+    body.innerHTML = `<div class="ai-feedback" style="color:var(--red)">${error}</div>
+      <div class="row-buttons"><button class="pixel-btn" data-nav="screen-hub">BACK</button></div>`;
+    return;
+  }
+
+  const pct = v => ((v / 25) * 100).toFixed(0);
+  body.innerHTML = `
+    <div class="ai-score-bar-wrap">
+      <div class="ai-score-label"><span>THESIS</span><span>${scores.thesis}/25</span></div>
+      <div class="ai-score-track"><div class="ai-score-fill fill-thesis" style="width:0%" data-target="${pct(scores.thesis)}%"></div></div>
+    </div>
+    <div class="ai-score-bar-wrap">
+      <div class="ai-score-label"><span>STRUCTURE</span><span>${scores.structure}/25</span></div>
+      <div class="ai-score-track"><div class="ai-score-fill fill-structure" style="width:0%" data-target="${pct(scores.structure)}%"></div></div>
+    </div>
+    <div class="ai-score-bar-wrap">
+      <div class="ai-score-label"><span>EVIDENCE</span><span>${scores.evidence}/25</span></div>
+      <div class="ai-score-track"><div class="ai-score-fill fill-evidence" style="width:0%" data-target="${pct(scores.evidence)}%"></div></div>
+    </div>
+    <div class="ai-score-bar-wrap">
+      <div class="ai-score-label"><span>MECHANICS</span><span>${scores.mechanics}/25</span></div>
+      <div class="ai-score-track"><div class="ai-score-fill fill-mechanics" style="width:0%" data-target="${pct(scores.mechanics)}%"></div></div>
+    </div>
+    <div class="ai-total">TOTAL: ${total} / 100</div>
+    <div class="ai-feedback">${scores.feedback || ''}</div>
+    <div class="row-buttons">
+      <button class="pixel-btn" data-nav="screen-hub">BACK TO HUB</button>
+    </div>`;
+
+  // animate bars after paint
+  requestAnimationFrame(() => {
+    body.querySelectorAll('.ai-score-fill').forEach(el => {
+      el.style.width = el.dataset.target;
+    });
+    wireNavButtons(body);
+  });
+}
+
+// ── MOMO DIALOGUE ─────────────────────────────────────────────────────────
+
+const MOMO_LINES = {
+  quest_created:    ["A new assignment! I've already run the calculations — the margin is tighter than you think. Don't sleep on the deadline.",
+                     "New quest logged. My data projections suggest you have less buffer than you believe. Begin the outline now.",
+                     "Interesting. I'll track this one in my research log. The outline phase is critical — skip it and you'll pay later."],
+  milestone_outline:["Outline complete! Structure is everything. My Ahl-Tectum turret only worked once I drafted the firing sequence first.",
+                     "Solid outline. You've done what most scholars skip. The draft will flow easier now — I've seen it in my experiments.",
+                     "The scaffold is built. Now we fill it. My Honey Bee prototype looked useless until the frame was finished. Trust the process."],
+  milestone_draft1: ["First draft done! Don't get comfortable — even my Honey Bee took twelve iterations before it flew straight.",
+                     "Draft complete. This is data, not a final answer. Revise with the same energy you used to write it.",
+                     "Good. Raw output secured. Now we refine. Every machine I've built looked broken on the first run."],
+  milestone_revised:["Revision complete! You're sharpening the blade now. Most people stop at draft one — you didn't.",
+                     "Revised. The difference between a draft and a final is exactly this step. I've seen scholars skip it. They regret it.",
+                     "Excellent. The structural integrity is improving. My instruments are reading stronger coherence already."],
+  level_up:         ["Power spike detected! You just leveled up. My instruments haven't read numbers this high since the Plant!",
+                     "Level up! I'm noting this in my research log. Your focus readings are off the charts.",
+                     "Remarkable growth. The data is clear: you're becoming something stronger. Keep going."],
+  deadline_warning: ["Deadline in under 24 hours. I'm rerouting auxiliary focus to your workstation. You need to move NOW.",
+                     "ALERT. Time is running out. I've seen scholars lose everything by underestimating the final stretch.",
+                     "The countdown is critical. My turret auto-fires at deadline — yours should too. Get to work."],
+  ai_result_high:   ["85 or above! That's Master class output. Ryu would be impressed — and he barely talks.",
+                     "Exceptional score. This is the kind of work that gets remembered. I'm flagging it in my records.",
+                     "High marks confirmed. My readings show this essay has structural integrity and argumentative force. Well done."],
+  ai_result_low:    ["Even the Ahl-Tectum exploded the first time. That's data. Revise. Resubmit. That's how you get to the right answer.",
+                     "Low score recorded. This is not failure — it's calibration. My best inventions failed dozens of times first.",
+                     "The numbers aren't there yet. But you have something to work with now. Revision is the real skill."],
+  streak_bonus:     ["Three consecutive days of work! Your focus readings are off the chart. I'm noting this in my research log.",
+                     "Consistent output detected. This is how mastery is built — day after day, draft after draft.",
+                     "Streak bonus active. The compounding effect of daily effort is exactly what my research models predicted."],
+};
+
+let momoTypingTimer = null;
+let momoCurrentEvent = null;
+
+function showMomo(eventType) {
+  const lines = MOMO_LINES[eventType];
+  if (!lines) return;
+  const line = lines[Math.floor(Math.random() * lines.length)];
+  momoCurrentEvent = eventType;
+
+  const overlay = document.getElementById('overlay-momo');
+  const textEl  = document.getElementById('momo-text');
+  if (!overlay || !textEl) return;
+
+  overlay.classList.add('active');
+  textEl.textContent = '';
+
+  if (momoTypingTimer) clearInterval(momoTypingTimer);
+
+  let i = 0;
+  momoTypingTimer = setInterval(() => {
+    textEl.textContent += line[i++];
+    if (i >= line.length) clearInterval(momoTypingTimer);
+  }, 28);
+}
+
+function hideMomo() {
+  if (momoTypingTimer) clearInterval(momoTypingTimer);
+  document.getElementById('overlay-momo')?.classList.remove('active');
+}
+
+// ── RENDER FUNCTIONS ───────────────────────────────────────────────────────
+
+function renderCharacterSheet() {
+  const c = STATE.character;
+
+  const nameEl = document.getElementById('char-name');
+  if (nameEl) nameEl.textContent = c.name || '—';
+
+  const titleEl = document.getElementById('char-title');
+  if (titleEl) titleEl.textContent = c.title || '—';
+
+  const levelEl = document.getElementById('char-level');
+  if (levelEl) levelEl.textContent = c.level;
+
+  const xpFill = document.getElementById('xp-fill');
+  if (xpFill) {
+    const pct = Math.min(100, (c.xp / getXPThreshold(c.level)) * 100);
+    xpFill.style.width = pct + '%';
+  }
+
+  const xpText = document.getElementById('xp-text');
+  if (xpText) xpText.textContent = `${c.xp} / ${getXPThreshold(c.level)} XP`;
+
+  ['focus','wit','grit','lore'].forEach(s => {
+    const el = document.getElementById(`stat-${s}`);
+    if (el) el.textContent = c.stats[s];
+  });
+
+  const streakEl = document.getElementById('streak-count');
+  if (streakEl) streakEl.textContent = c.streak;
+
+  const abList = document.getElementById('abilities-list');
+  if (abList) {
+    abList.innerHTML = c.unlockedAbilities.length
+      ? c.unlockedAbilities.map(a => `<li>${a}</li>`).join('')
+      : '<li style="color:var(--dim)">None yet</li>';
+  }
+
+  const eqSlot = document.getElementById('equipped-slot');
+  if (eqSlot) {
+    eqSlot.textContent = c.equippedItem ? `${c.equippedItem.name}` : '— empty —';
+  }
+
+  // portrait emoji based on class
+  const portraits = { Essayist: '✒', Debater: '⚔', Researcher: '📜', Storyteller: '✦' };
+  const portrait  = document.getElementById('char-portrait');
+  if (portrait) portrait.textContent = portraits[c.cls] || '?';
+
+  renderCoursesList();
+  renderActiveQuestHub();
+}
+
+function renderCoursesList() {
+  const el = document.getElementById('courses-list');
+  if (!el) return;
+  if (!STATE.courses.length) {
+    el.innerHTML = '<div style="font-size:16px;color:var(--dim)">No courses yet.</div>';
+    return;
+  }
+  el.innerHTML = STATE.courses.map(course => {
+    const courseQuests    = STATE.quests.filter(q => q.courseId === course.id);
+    const completed       = courseQuests.filter(q => q.stage === 'complete').length;
+    return `<div class="course-row">
+      <span class="course-dot" style="background:${course.color}"></span>
+      <span class="course-row-name">${course.name}</span>
+      <span class="course-row-stats">${completed}/${courseQuests.length} done</span>
+    </div>`;
+  }).join('');
+}
+
+function renderActiveQuestHub() {
+  const area = document.getElementById('active-quest-area');
+  if (!area) return;
+  const active = getActiveQuests();
+  if (!active.length) {
+    area.innerHTML = '<div class="empty-hint">No quest embarked. Open the QUEST BOARD to begin.</div>';
+    return;
+  }
+  // show the most urgent
+  const q = active.sort((a, b) => {
+    const sa = checkDeadlineStatus(a);
+    const sb = checkDeadlineStatus(b);
+    const order = ['overdue','danger','warning','safe'];
+    return order.indexOf(sa) - order.indexOf(sb);
+  })[0];
+
+  const status = checkDeadlineStatus(q);
+  area.innerHTML = `
+    <div class="hub-quest-card">
+      <div class="hub-quest-title">${q.title}</div>
+      <div class="hub-quest-sub">Stage: ${STAGE_LABELS[q.stage] || q.stage} · ${q.difficulty}</div>
+      <div class="deadline-display ${status}">${formatCountdown(q)}</div>
+      <div class="row-buttons">
+        <button class="pixel-btn primary" onclick="openQuestDetail('${q.id}')">OPEN QUEST</button>
+      </div>
+    </div>`;
+}
+
+function renderQuestBoard(filter = 'active', courseFilter = null) {
+  const list = document.getElementById('quest-list');
+  if (!list) return;
+
+  let quests = filter === 'active' ? getActiveQuests() : getCompletedQuests();
+  if (courseFilter) quests = quests.filter(q => q.courseId === courseFilter);
+
+  if (!quests.length) {
+    list.innerHTML = '<div style="color:var(--dim);font-size:18px;padding:20px 0">No quests here yet.</div>';
+    return;
+  }
+
+  list.innerHTML = quests.map(q => {
+    const status  = checkDeadlineStatus(q);
+    const course  = STATE.courses.find(c => c.id === q.courseId);
+    const tag     = course ? `<span style="color:${course.color};font-size:13px">◆ ${course.name}</span>` : '';
+    const borderCls = status === 'overdue' || status === 'danger' ? 'danger-border'
+                    : status === 'warning' ? 'warning-border' : '';
+    return `<div class="quest-card ${borderCls}" onclick="openQuestDetail('${q.id}')">
+      <div>
+        <div class="quest-card-title">${q.title}</div>
+        <div class="quest-card-meta">${tag} · ${q.difficulty}</div>
+        <div class="quest-card-stage">${STAGE_LABELS[q.stage] || '✓ COMPLETE'}</div>
+      </div>
+      <div>
+        <div class="quest-card-timer ${status}">${formatCountdown(q)}</div>
+        <div class="quest-card-diff">${q.currentWordCount}/${q.wordCountGoal}w</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCourseFilter() {
+  const el = document.getElementById('course-filter');
+  if (!el) return;
+  el.innerHTML = `<button class="filter-chip active" data-course="">ALL</button>` +
+    STATE.courses.map(c =>
+      `<button class="filter-chip" data-course="${c.id}" style="border-color:${c.color};color:${c.color}">${c.name}</button>`
+    ).join('');
+
+  el.querySelectorAll('.filter-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      el.querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = document.querySelector('.tab-btn.active')?.dataset.tab || 'active';
+      renderQuestBoard(tab, btn.dataset.course || null);
+    });
+  });
+}
+
+let detailTimerInterval = null;
+
+function openQuestDetail(questId) {
+  showScreen('screen-quest-detail');
+  renderQuestDetail(questId);
+}
+
+function renderQuestDetail(questId) {
+  const q = getQuest(questId);
+  if (!q) return;
+
+  const titleEl = document.getElementById('quest-detail-title');
+  if (titleEl) titleEl.textContent = q.title;
+
+  const body = document.getElementById('quest-detail-body');
+  if (!body) return;
+
+  const status  = checkDeadlineStatus(q);
+  const course  = STATE.courses.find(c => c.id === q.courseId);
+  const wcPct   = Math.min(100, (q.currentWordCount / q.wordCountGoal) * 100);
+  const stageIdx = STAGES.indexOf(q.stage);
+  const isComplete = q.stage === 'complete';
+
+  const stageHTML = STAGES.slice(0, 4).map((s, i) => {
+    const cls = i < stageIdx ? 'done' : (i === stageIdx ? 'current' : '');
+    return `<div class="stage-step ${cls}">${STAGE_LABELS[s]}</div>`;
+  }).join('');
+
+  const nextStage = !isComplete && stageIdx < STAGES.length - 2
+    ? STAGES[stageIdx + 1] : null;
+
+  body.innerHTML = `
+    <div class="detail-section">
+      <div class="detail-label">COURSE</div>
+      <div class="detail-value" style="color:${course?.color||'var(--dim)'}">${course?.name || 'Uncategorized'}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">DIFFICULTY</div>
+      <div class="detail-value">${q.difficulty} (${DIFF_MULTIPLIER[q.difficulty]}× XP)</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">STAGE PROGRESS</div>
+      <div class="stage-tracker">${stageHTML}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">DEADLINE</div>
+      <div class="deadline-display ${status}" id="detail-countdown">${formatCountdown(q)}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-label">WORD COUNT — ${q.currentWordCount} / ${q.wordCountGoal}</div>
+      <div class="wc-bar-track"><div class="wc-bar-fill" style="width:${wcPct}%"></div></div>
+    </div>
+
+    ${q.aiScore !== null ? `<div class="detail-section"><div class="detail-label">LAST AI SCORE</div><div class="detail-value" style="color:var(--green)">${q.aiScore} / 100</div></div>` : ''}
+    ${q.xpEarned ? `<div class="detail-section"><div class="detail-label">XP EARNED</div><div class="detail-value" style="color:var(--gold)">${q.xpEarned} XP</div></div>` : ''}
+
+    ${isComplete ? '<div style="color:var(--green);font-family:var(--font-px);font-size:10px;text-align:center">✓ QUEST COMPLETE</div>' : ''}
+
+    <div class="action-buttons">
+      <button class="pixel-btn" onclick="showScreen('screen-quest-board')">BACK</button>
+      ${!isComplete ? `<button class="pixel-btn primary" onclick="openEditor('${q.id}')">WRITE ESSAY</button>` : ''}
+      ${!isComplete && nextStage ? `<button class="pixel-btn" onclick="advanceMilestone('${q.id}')">ADVANCE → ${STAGE_LABELS[nextStage]}</button>` : ''}
+      ${!isComplete ? `<button class="pixel-btn" onclick="goToAIEval('${q.id}')">AI EVALUATE</button>` : ''}
+    </div>`;
+
+  // live countdown
+  if (detailTimerInterval) clearInterval(detailTimerInterval);
+  if (!isComplete) {
+    detailTimerInterval = setInterval(() => {
+      const cd = document.getElementById('detail-countdown');
+      if (!cd) { clearInterval(detailTimerInterval); return; }
+      const st = checkDeadlineStatus(q);
+      cd.className = `deadline-display ${st}`;
+      cd.textContent = formatCountdown(q);
+      if (st === 'overdue') showMomo('deadline_warning');
+    }, 1000);
+  }
+}
