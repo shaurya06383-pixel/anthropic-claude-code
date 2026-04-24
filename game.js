@@ -1081,12 +1081,11 @@ function init() {
 
   document.getElementById('btn-confirm-char').addEventListener('click', () => {
     const name = document.getElementById('input-name').value.trim();
-    const cls  = document.querySelector('.class-card.selected')?.getAttribute('data-class') || '';
+    const cls  = STATE.character.cls || '';
     if (!name) { showXPToast('Enter a name!', ''); return; }
     if (!cls)  { showXPToast('Choose a class!', ''); return; }
 
-    STATE.character.name  = name;
-    STATE.character.cls   = cls;
+    STATE.character.name = name;
     // class stat bonuses
     const bonuses = { Essayist: 'focus', Debater: 'wit', Researcher: 'lore', Storyteller: 'grit' };
     if (bonuses[cls]) STATE.character.stats[bonuses[cls]] += 2;
