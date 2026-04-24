@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ACADEMIC WEAPON</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ TITLE SCREEN ============ -->
+  <div class="screen active" id="screen-title">
+    <div class="title-bg-grid"></div>
+    <div class="title-stack">
+      <div class="title-logo">
+        <div class="title-line-top">~ A SCHOLAR'S LEGEND ~</div>
+        <h1 class="logo-text">ACADEMIC<br>WEAPON</h1>
+        <div class="title-line-bot">press to begin your study</div>
+      </div>
+      <div class="title-buttons">
+        <button class="pixel-btn primary" id="btn-new-game">NEW GAME</button>
+        <button class="pixel-btn" id="btn-continue">CONTINUE</button>
+      </div>
+      <div class="title-footer">v1.0 · forged of ink and will</div>
+    </div>
+  </div>
+
+  <!-- ============ CHARACTER CREATION ============ -->
+  <div class="screen" id="screen-char-create">
+    <div class="panel panel-wide">
+      <div class="panel-header">* NAME THY SCHOLAR *</div>
+      <div class="panel-body">
+        <label class="field-label">ENTER NAME</label>
+        <input class="pixel-input" type="text" id="input-name" maxlength="16" placeholder="Scholar">
+
+        <label class="field-label">CHOOSE A CLASS</label>
+        <div class="class-grid">
+          <div class="class-card" data-class="Essayist">
+            <div class="class-icon">✒</div>
+            <div class="class-name">ESSAYIST</div>
+            <div class="class-flavor">Structure-first. Bonus to outline XP.</div>
+            <div class="class-stat">+2 FOCUS</div>
+          </div>
+          <div class="class-card" data-class="Debater">
+            <div class="class-icon">⚔</div>
+            <div class="class-name">DEBATER</div>
+            <div class="class-flavor">Forged in argument. Bonus to thesis score.</div>
+            <div class="class-stat">+2 WIT</div>
+          </div>
+          <div class="class-card" data-class="Researcher">
+            <div class="class-icon">📜</div>
+            <div class="class-name">RESEARCHER</div>
+            <div class="class-flavor">Evidence wins wars. Bonus to citations.</div>
+            <div class="class-stat">+2 LORE</div>
+          </div>
+          <div class="class-card" data-class="Storyteller">
+            <div class="class-icon">✦</div>
+            <div class="class-name">STORYTELLER</div>
+            <div class="class-flavor">Prose that cuts. Bonus to mechanics.</div>
+            <div class="class-stat">+2 GRIT</div>
+          </div>
+        </div>
+
+        <div class="row-buttons">
+          <button class="pixel-btn" data-nav="screen-title">BACK</button>
+          <button class="pixel-btn primary" id="btn-confirm-char">BEGIN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ HUB ============ -->
+  <div class="screen" id="screen-hub">
+    <div class="hub-grid">
+      <!-- LEFT: Character Sheet -->
+      <div class="panel" id="panel-character">
+        <div class="panel-header">CHARACTER</div>
+        <div class="panel-body">
+          <div class="char-portrait" id="char-portrait"></div>
+          <div class="char-name" id="char-name">—</div>
+          <div class="char-title" id="char-title">—</div>
+          <div class="char-level-row">
+            <span class="char-level-label">LV</span>
+            <span class="char-level" id="char-level">1</span>
+          </div>
+          <div class="xp-bar-wrap">
+            <div class="xp-bar-track"><div class="xp-bar-fill" id="xp-fill"></div></div>
+            <div class="xp-bar-text" id="xp-text">0 / 120 XP</div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-row"><span class="stat-k">FOCUS</span><span class="stat-v" id="stat-focus">0</span></div>
+            <div class="stat-row"><span class="stat-k">WIT</span><span class="stat-v" id="stat-wit">0</span></div>
+            <div class="stat-row"><span class="stat-k">GRIT</span><span class="stat-v" id="stat-grit">0</span></div>
+            <div class="stat-row"><span class="stat-k">LORE</span><span class="stat-v" id="stat-lore">0</span></div>
+          </div>
+          <div class="streak-row">
+            <span class="streak-icon">🔥</span>
+            <span id="streak-count">0</span>
+            <span class="streak-label">DAY STREAK</span>
+          </div>
+          <div class="abilities-block">
+            <div class="abilities-header">ABILITIES</div>
+            <ul class="abilities-list" id="abilities-list"></ul>
+          </div>
+          <div class="equipped-block">
+            <div class="abilities-header">EQUIPPED</div>
+            <div id="equipped-slot" class="equipped-slot">— empty —</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Main area -->
+      <div class="hub-right">
+        <div class="panel">
+          <div class="panel-header">ACTIVE QUEST</div>
+          <div class="panel-body" id="active-quest-area">
+            <div class="empty-hint">No quest embarked. Open the QUEST BOARD to begin.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">COURSES</div>
+          <div class="panel-body">
+            <div id="courses-list" class="courses-list"></div>
+            <button class="pixel-btn small" id="btn-add-course">+ ADD COURSE</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- bottom nav -->
+    <div class="nav-bar">
+      <button class="nav-btn" data-nav="screen-quest-board">◆ QUESTS</button>
+      <button class="nav-btn" data-nav="screen-inventory">▣ BAG</button>
+      <button class="nav-btn" data-nav="screen-codex">☽ CODEX</button>
+      <button class="nav-btn" data-nav="screen-settings">⚙ CONFIG</button>
+      <button class="nav-btn danger" id="btn-reset-game">↺ RESET</button>
+    </div>
+  </div>
+
+  <!-- ============ QUEST BOARD ============ -->
+  <div class="screen" id="screen-quest-board">
+    <div class="panel panel-wide">
+      <div class="panel-header">QUEST BOARD</div>
+      <div class="panel-body">
+        <div class="quest-tabs">
+          <button class="tab-btn active" data-tab="active">ACTIVE</button>
+          <button class="tab-btn" data-tab="completed">COMPLETED</button>
+        </div>
+        <div class="course-filter" id="course-filter"></div>
+        <div id="quest-list" class="quest-list"></div>
+        <div class="row-buttons">
+          <button class="pixel-btn" data-nav="screen-hub">BACK</button>
+          <button class="pixel-btn primary" id="btn-new-quest">+ NEW QUEST</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ QUEST DETAIL ============ -->
+  <div class="screen" id="screen-quest-detail">
+    <div class="panel panel-wide">
+      <div class="panel-header" id="quest-detail-title">QUEST</div>
+      <div class="panel-body" id="quest-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- ============ ESSAY EDITOR ============ -->
+  <div class="screen" id="screen-essay-editor">
+    <div class="panel panel-wide">
+      <div class="panel-header">ESSAY FORGE</div>
+      <div class="panel-body">
+        <div class="editor-meta">
+          <div id="editor-quest-name">—</div>
+          <div class="editor-wc">
+            <span id="editor-word-count">0</span> / <span id="editor-word-goal">0</span> words
+          </div>
+        </div>
+        <div class="wc-bar-track"><div class="wc-bar-fill" id="wc-fill"></div></div>
+        <textarea id="essay-text" class="pixel-textarea" placeholder="Begin writing. Each checkpoint of progress earns XP..."></textarea>
+        <div class="row-buttons">
+          <button class="pixel-btn" id="btn-editor-back">BACK</button>
+          <button class="pixel-btn" id="btn-editor-save">SAVE</button>
+          <button class="pixel-btn primary" id="btn-editor-submit">SUBMIT TO AI ORACLE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ AI EVAL ============ -->
+  <div class="screen" id="screen-ai-eval">
+    <div class="panel panel-wide">
+      <div class="panel-header">AI ORACLE EVALUATION</div>
+      <div class="panel-body" id="ai-eval-body"></div>
+    </div>
+  </div>
+
+  <!-- ============ SETTINGS ============ -->
+  <div class="screen" id="screen-settings">
+    <div class="panel panel-wide">
+      <div class="panel-header">CONFIG</div>
+      <div class="panel-body">
+        <label class="field-label">ANTHROPIC API KEY (stored locally, never sent to any server other than Anthropic)</label>
+        <input class="pixel-input" type="password" id="input-api-key" placeholder="sk-ant-...">
+        <div class="hint-text">Required for AI essay evaluation. Get one at console.anthropic.com</div>
+        <div class="row-buttons">
+          <button class="pixel-btn" data-nav="screen-hub">BACK</button>
+          <button class="pixel-btn primary" id="btn-save-settings">SAVE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ INVENTORY ============ -->
+  <div class="screen" id="screen-inventory">
+    <div class="panel panel-wide">
+      <div class="panel-header">INVENTORY</div>
+      <div class="panel-body">
+        <div id="inventory-grid" class="inventory-grid"></div>
+        <div class="row-buttons">
+          <button class="pixel-btn" data-nav="screen-hub">BACK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CODEX ============ -->
+  <div class="screen" id="screen-codex">
+    <div class="panel panel-wide">
+      <div class="panel-header">CODEX · FRAGMENTS OF THE BLADE</div>
+      <div class="panel-body">
+        <div class="codex-preamble">
+          Whispers say the <em>Academic Weapons</em> — daggers forged of pure argument — exist.
+          No one living has seen them. Collect fragments. Seek the truth.
+        </div>
+        <div id="codex-list" class="codex-list"></div>
+        <div class="row-buttons">
+          <button class="pixel-btn" data-nav="screen-hub">BACK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LEVEL UP OVERLAY ============ -->
+  <div class="overlay" id="overlay-levelup">
+    <div class="levelup-content">
+      <div class="levelup-flash"></div>
+      <div class="levelup-text">LEVEL UP!</div>
+      <div class="levelup-newlvl">LV <span id="levelup-lvl">2</span></div>
+      <div class="levelup-title" id="levelup-title"></div>
+      <div class="levelup-ability" id="levelup-ability"></div>
+      <button class="pixel-btn primary" id="btn-levelup-close">CONTINUE</button>
+    </div>
+  </div>
+
+  <!-- ============ LORE REVEAL OVERLAY ============ -->
+  <div class="overlay" id="overlay-lore">
+    <div class="lore-content">
+      <div class="lore-header">~ A FRAGMENT UNEARTHED ~</div>
+      <div class="lore-body" id="lore-body"></div>
+      <button class="pixel-btn primary" id="btn-lore-close">CLOSE</button>
+    </div>
+  </div>
+
+  <!-- ============ ITEM GET OVERLAY ============ -->
+  <div class="overlay" id="overlay-item">
+    <div class="item-get-content">
+      <div class="item-get-header">✦ ITEM OBTAINED ✦</div>
+      <div class="item-get-icon" id="item-get-icon">?</div>
+      <div class="item-get-name" id="item-get-name">—</div>
+      <div class="item-get-rarity" id="item-get-rarity">—</div>
+      <div class="item-get-desc" id="item-get-desc">—</div>
+      <button class="pixel-btn primary" id="btn-item-close">CONTINUE</button>
+    </div>
+  </div>
+
+  <!-- ============ NEW QUEST MODAL ============ -->
+  <div class="overlay" id="overlay-new-quest">
+    <div class="panel">
+      <div class="panel-header">NEW QUEST</div>
+      <div class="panel-body">
+        <label class="field-label">COURSE</label>
+        <select id="quest-course" class="pixel-input"></select>
+
+        <label class="field-label">ESSAY TITLE</label>
+        <input type="text" id="quest-title" class="pixel-input" maxlength="60" placeholder="On the nature of time">
+
+        <label class="field-label">WORD COUNT GOAL</label>
+        <input type="number" id="quest-words" class="pixel-input" min="100" max="20000" value="1000">
+
+        <label class="field-label">DEADLINE</label>
+        <input type="datetime-local" id="quest-deadline" class="pixel-input">
+
+        <label class="field-label">DIFFICULTY</label>
+        <select id="quest-difficulty" class="pixel-input">
+          <option value="Easy">Easy (0.8× XP)</option>
+          <option value="Normal" selected>Normal (1.0× XP)</option>
+          <option value="Hard">Hard (1.5× XP)</option>
+          <option value="Legendary">Legendary (2.0× XP)</option>
+        </select>
+
+        <div class="row-buttons">
+          <button class="pixel-btn" id="btn-cancel-quest">CANCEL</button>
+          <button class="pixel-btn primary" id="btn-create-quest">FORGE QUEST</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ADD COURSE MODAL ============ -->
+  <div class="overlay" id="overlay-add-course">
+    <div class="panel">
+      <div class="panel-header">ADD COURSE</div>
+      <div class="panel-body">
+        <label class="field-label">COURSE NAME</label>
+        <input type="text" id="course-name" class="pixel-input" maxlength="24" placeholder="HIST 101">
+
+        <label class="field-label">COLOR</label>
+        <div class="color-picker" id="color-picker">
+          <span class="color-chip" data-color="#FFD700" style="background:#FFD700"></span>
+          <span class="color-chip" data-color="#9B59B6" style="background:#9B59B6"></span>
+          <span class="color-chip" data-color="#00FF9F" style="background:#00FF9F"></span>
+          <span class="color-chip" data-color="#FF4444" style="background:#FF4444"></span>
+          <span class="color-chip" data-color="#4FC3F7" style="background:#4FC3F7"></span>
+          <span class="color-chip" data-color="#FF8C42" style="background:#FF8C42"></span>
+        </div>
+
+        <div class="row-buttons">
+          <button class="pixel-btn" id="btn-cancel-course">CANCEL</button>
+          <button class="pixel-btn primary" id="btn-save-course">SAVE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MOMO DIALOGUE OVERLAY ============ -->
+  <div class="momo-overlay" id="overlay-momo">
+    <div class="momo-box">
+      <div class="momo-sprite" id="momo-sprite"></div>
+      <div class="momo-body">
+        <div class="momo-name">MOMO</div>
+        <div class="momo-text" id="momo-text"></div>
+        <div class="momo-next" id="momo-next">▼</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- XP Floating Toast -->
+  <div class="toast-layer" id="toast-layer"></div>
+
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
