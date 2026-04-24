@@ -1075,6 +1075,7 @@ function init() {
     card.addEventListener('click', () => {
       document.querySelectorAll('.class-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
+      STATE.character.cls = card.getAttribute('data-class');
     });
   });
 
