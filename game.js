@@ -78,6 +78,7 @@ function showScreen(id) {
   if (target) {
     target.classList.add('active');
     if (SCREEN_INITS[id]) SCREEN_INITS[id]();
+    AudioEngine.onScreen(id);
   }
 }
 
@@ -182,6 +183,7 @@ function showXPToast(text, reason) {
   t.style.top  = (30 + Math.random() * 30) + '%';
   layer.appendChild(t);
   setTimeout(() => t.remove(), 1900);
+  AudioEngine.sfx('xp');
 }
 
 function showLevelUpOverlay(level, title, ability) {
@@ -189,6 +191,7 @@ function showLevelUpOverlay(level, title, ability) {
   document.getElementById('levelup-title').textContent  = title   ? `★ ${title} ★`  : '';
   document.getElementById('levelup-ability').textContent = ability ? `NEW: ${ability}` : '';
   document.getElementById('overlay-levelup').classList.add('active');
+  AudioEngine.fanfare();
   showMomo('level_up');
 }
 
@@ -569,6 +572,7 @@ function showMomo(eventType) {
 
   overlay.classList.add('active');
   textEl.textContent = '';
+  AudioEngine.sfx('momo');
 
   if (momoTypingTimer) clearInterval(momoTypingTimer);
 
@@ -1058,6 +1062,11 @@ function init() {
   const hasSave = loadGame();
   wireNavButtons();
 
+  // Global click SFX — any button triggers audio context (satisfies autoplay policy)
+  document.addEventListener('click', e => {
+    if (e.target.matches('button, .class-card, .quest-card')) AudioEngine.sfx('click');
+  }, { passive: true });
+
   // ── Title screen buttons ──
   document.getElementById('btn-new-game').addEventListener('click', () => showScreen('screen-char-create'));
   document.getElementById('btn-continue').addEventListener('click', () => {
@@ -1102,6 +1111,11 @@ function init() {
     document.getElementById('overlay-add-course').classList.add('active');
     document.getElementById('course-name').value = '';
     document.querySelectorAll('.color-chip').forEach((c,i) => { if(i===0) c.classList.add('selected'); else c.classList.remove('selected'); });
+  });
+
+  document.getElementById('btn-mute').addEventListener('click', () => {
+    const nowMuted = AudioEngine.toggleMute();
+    document.getElementById('btn-mute').textContent = nowMuted ? '♪ UNMUTE' : '♪ MUTE';
   });
 
   document.getElementById('btn-reset-game').addEventListener('click', () => {
@@ -1260,5 +1274,253 @@ function init() {
     showScreen('screen-title');
   }
 }
+
+// ── PART 5: AUDIO ENGINE ──────────────────────────────────────────────────
+
+const AudioEngine = (() => {
+  let ctx = null;
+  let masterGain = null;
+  let loopTimeout = null;
+  let currentTrack = null;
+  let muted = false;
+
+  // Frequency table (Hz)
+  const N = {
+    A1:55.00, C2:65.41, D2:73.42, E2:82.41, F2:87.31, G2:98.00, A2:110.00, Bb2:116.54, B2:123.47,
+    C3:130.81, D3:146.83, Eb3:155.56, E3:164.81, F3:174.61, Fs3:185.00, G3:196.00, Ab3:207.65, A3:220.00, Bb3:233.08, B3:246.94,
+    C4:261.63, Cs4:277.18, D4:293.66, Eb4:311.13, E4:329.63, F4:349.23, Fs4:369.99, G4:392.00, Ab4:415.30, A4:440.00, Bb4:466.16, B4:493.88,
+    C5:523.25, D5:587.33, Eb5:622.25, E5:659.25, F5:698.46, G5:783.99, A5:880.00,
+  };
+
+  function ensure() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = ctx.createGain();
+      masterGain.gain.value = muted ? 0 : 0.18;
+      masterGain.connect(ctx.destination);
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+  }
+
+  function note(freq, t, dur, type = 'square', vol = 0.13) {
+    const osc  = ctx.createOscillator();
+    const gn   = ctx.createGain();
+    const lpf  = ctx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 1600;
+    osc.type = type;
+    osc.frequency.value = freq;
+    gn.gain.setValueAtTime(0.001, t);
+    gn.gain.linearRampToValueAtTime(vol, t + 0.015);
+    gn.gain.linearRampToValueAtTime(0.001, t + dur * 0.85);
+    osc.connect(lpf); lpf.connect(gn); gn.connect(masterGain);
+    osc.start(t); osc.stop(t + dur);
+  }
+
+  function schedulePattern(pattern, bpm, t0) {
+    const beat = 60 / bpm;
+    let t = t0;
+    let totalDur = 0;
+    for (const [n, dur, type, vol] of pattern) {
+      const d = dur * beat;
+      if (n && N[n]) note(N[n], t, d, type || 'square', vol || 0.13);
+      t += d;
+      totalDur += d;
+    }
+    return totalDur;
+  }
+
+  // ── Track definitions ────────────────────────────────────────────────────
+  // Each track: { bpm, layers: [ pattern[] ] }
+  // Pattern entry: [noteName|null, beatDuration, waveType?, volume?]
+
+  const TRACKS = {
+
+    title: {
+      bpm: 96,
+      layers: [
+        // Haunting minor melody
+        [
+          ['A3',1],['C4',0.5],['E4',0.5],['A4',1],['G4',0.5],['E4',0.5],
+          ['F4',1],['A4',0.5],['C5',0.5],['E5',1],[null,1],
+          ['D5',0.5],['C5',0.5],['A4',1],['G4',0.5],['E4',0.5],
+          ['A4',1],[null,0.5],['G4',0.5],['E4',1],['C4',1],
+          ['A3',2],[null,2],
+        ],
+        // Arpeggio layer
+        [
+          ['A2',0.5],['E3',0.5],['A3',0.5],['C4',0.5], ['G2',0.5],['D3',0.5],['G3',0.5],['B3',0.5],
+          ['F2',0.5],['C3',0.5],['F3',0.5],['A3',0.5], ['E2',0.5],['B2',0.5],['E3',0.5],['G3',0.5],
+          ['A2',0.5],['E3',0.5],['A3',0.5],['E3',0.5], ['A2',0.5],['E3',0.5],['A3',0.5],['E3',0.5],
+        ],
+        // Bass pulse
+        [
+          ['A1',2,'triangle',0.12],['A1',2,'triangle',0.10],
+          ['F1',2,'triangle',0.12],['F1',2,'triangle',0.10],
+          ['E1',4,'triangle',0.12],
+          ['A1',4,'triangle',0.14],
+        ],
+      ],
+    },
+
+    hub: {
+      bpm: 132,
+      layers: [
+        // Upbeat overworld melody
+        [
+          ['E4',0.5],['G4',0.5],['C5',1],['G4',0.5],['E4',0.5],
+          ['A4',0.5],['C5',0.5],['E5',1],[null,1],
+          ['D5',0.5],['B4',0.5],['G4',1],['E4',0.5],['D4',0.5],
+          ['C4',1],['E4',1],['G4',2],
+          ['E5',0.5],[null,0.5],['D5',0.5],['B4',0.5],['A4',1],['G4',1],
+          ['F4',0.5],['A4',0.5],['C5',1],['A4',0.5],['F4',0.5],
+          ['G4',1],['B4',1],['D5',2],
+          ['C5',2],[null,1],['G4',1],
+        ],
+        // Counter melody
+        [
+          ['C3',0.5],['E3',0.5],['G3',0.5],['E3',0.5], ['A2',0.5],['C3',0.5],['E3',0.5],['C3',0.5],
+          ['G2',0.5],['B2',0.5],['D3',0.5],['B2',0.5], ['C3',0.5],['E3',0.5],['G3',0.5],['E3',0.5],
+          ['C3',0.5],['E3',0.5],['G3',0.5],['E3',0.5], ['F2',0.5],['A2',0.5],['C3',0.5],['A2',0.5],
+          ['G2',0.5],['B2',0.5],['D3',0.5],['B2',0.5], ['C3',1],[null,1],['C3',0.5],['G2',0.5],
+        ],
+        // Walking bass
+        [
+          ['C2',1,'triangle',0.15],['G2',1,'triangle',0.12],['A2',1,'triangle',0.15],['E2',1,'triangle',0.12],
+          ['F2',1,'triangle',0.15],['C2',1,'triangle',0.12],['G2',2,'triangle',0.15],
+          ['C2',1,'triangle',0.15],['G2',1,'triangle',0.12],['F2',1,'triangle',0.15],['G2',1,'triangle',0.12],
+          ['C2',2,'triangle',0.18],[null,2,'triangle',0],
+        ],
+      ],
+    },
+
+    editor: {
+      bpm: 78,
+      layers: [
+        // Calm flowing arpeggios
+        [
+          ['C4',1],['E4',1],['G4',1],['A4',1],
+          ['F3',1],['A3',1],['C4',1],['E4',1],
+          ['G3',1],['B3',1],['D4',1],['G4',1],
+          ['E3',1],['G3',1],['B3',1],['E4',1],
+          ['A3',1],['C4',1],['E4',1],['C4',1],
+          ['F3',1],['A3',1],['C4',1],['A3',1],
+          ['G3',1],['B3',1],['D4',1],['B3',1],
+          ['C3',1],['E3',1],['G3',1],['E3',1],
+        ],
+        // Gentle bass
+        [
+          ['C2',4,'triangle',0.10],['F2',4,'triangle',0.10],
+          ['G2',4,'triangle',0.10],['E2',4,'triangle',0.10],
+          ['A2',4,'triangle',0.10],['F2',4,'triangle',0.10],
+          ['G2',4,'triangle',0.10],['C2',4,'triangle',0.10],
+        ],
+      ],
+    },
+
+    danger: {
+      bpm: 168,
+      layers: [
+        // Tense staccato
+        [
+          ['D4',0.5],[null,0.25],['F4',0.25],['A4',0.5],[null,0.25],['C5',0.25],
+          ['A4',0.5],['F4',0.5],['D4',1],
+          ['Eb4',0.5],[null,0.25],['G4',0.25],['Bb4',0.5],[null,0.25],['D5',0.25],
+          ['C5',0.5],['Bb4',0.5],['A4',1],
+          ['A4',0.5],[null,0.5],['F4',0.25],['E4',0.25],['Eb4',0.5],[null,0.5],
+          ['D4',0.5],[null,0.5],['A3',0.5],[null,0.5],
+          ['D5',0.5],['C5',0.25],[null,0.25],['Bb4',0.25],[null,0.25],['A4',0.5],
+          ['D4',2],
+        ],
+        // Driving bass
+        [
+          ['D2',0.5],['D2',0.5],['A1',0.5],['D2',0.5],
+          ['D2',0.5],['D2',0.5],['A1',0.5],['D2',0.5],
+          ['Bb2',0.5],['Bb2',0.5],['F2',0.5],['Bb2',0.5],
+          ['A2',0.5],['A2',0.5],['E2',0.5],['A2',0.5],
+        ].map(([n,d]) => [n,d,'sawtooth',0.10]),
+      ],
+    },
+  };
+
+  function startTrack(name) {
+    if (loopTimeout) { clearTimeout(loopTimeout); loopTimeout = null; }
+    if (!TRACKS[name]) return;
+    currentTrack = name;
+
+    function loop() {
+      if (currentTrack !== name) return;
+      const t0 = ctx.currentTime + 0.05;
+      const track = TRACKS[name];
+      let maxDur = 0;
+      for (const layer of track.layers) {
+        const d = schedulePattern(layer, track.bpm, t0);
+        if (d > maxDur) maxDur = d;
+      }
+      loopTimeout = setTimeout(loop, (maxDur - 0.15) * 1000);
+    }
+    loop();
+  }
+
+  function play(name) {
+    ensure();
+    if (muted) return;
+    if (currentTrack === name) return;
+    startTrack(name);
+  }
+
+  function stop() {
+    currentTrack = null;
+    if (loopTimeout) { clearTimeout(loopTimeout); loopTimeout = null; }
+  }
+
+  function fanfare() {
+    ensure();
+    if (muted) return;
+    const t = ctx.currentTime;
+    const run = [['C4',0],['E4',1],['G4',2],['C5',3],['E5',4],['G5',5],['C6',6]];
+    run.forEach(([n,i]) => note(N[n] || 1046.5, t + i * 0.07, 0.35, 'square', 0.18));
+    note(N['C5'], t + run.length * 0.07, 0.7, 'square', 0.22);
+  }
+
+  function sfx(type) {
+    ensure();
+    if (muted) return;
+    const t = ctx.currentTime;
+    if (type === 'xp')    { note(N['A5'], t, 0.07, 'square', 0.09); note(N['C5'], t + 0.08, 0.07, 'square', 0.09); }
+    if (type === 'click') { note(N['G5'], t, 0.04, 'square', 0.07); }
+    if (type === 'error') { note(N['A3'], t, 0.12, 'sawtooth', 0.10); note(N['G3'], t + 0.06, 0.12, 'sawtooth', 0.08); }
+    if (type === 'save')  { note(N['C5'], t, 0.07, 'square', 0.09); note(N['E5'], t + 0.09, 0.07, 'square', 0.09); }
+    if (type === 'momo')  { note(N['Fs4'], t, 0.08, 'square', 0.08); note(N['A4'], t + 0.09, 0.08, 'square', 0.08); }
+  }
+
+  const SCREEN_TRACK = {
+    'screen-title':       'title',
+    'screen-char-create': 'title',
+    'screen-hub':         'hub',
+    'screen-quest-board': 'hub',
+    'screen-quest-detail':'hub',
+    'screen-essay-editor':'editor',
+    'screen-ai-eval':     'editor',
+    'screen-inventory':   'hub',
+    'screen-codex':       'hub',
+    'screen-settings':    'hub',
+  };
+
+  function onScreen(id) {
+    const track = SCREEN_TRACK[id];
+    if (track) play(track);
+  }
+
+  function toggleMute() {
+    ensure();
+    muted = !muted;
+    masterGain.gain.value = muted ? 0 : 0.18;
+    if (!muted && currentTrack) startTrack(currentTrack);
+    return muted;
+  }
+
+  return { play, stop, onScreen, fanfare, sfx, toggleMute };
+})();
 
 document.addEventListener('DOMContentLoaded', init);
