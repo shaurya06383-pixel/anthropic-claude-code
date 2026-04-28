@@ -282,6 +282,20 @@ function advanceMilestone(questId) {
   renderQuestDetail(questId);
 }
 
+function markSubmitted(questId) {
+  const q = getQuest(questId);
+  if (!q || q.stage === 'complete') return;
+  // Award final milestone XP for any stages not yet credited
+  const remaining = ['outline','draft1','revised','final'].filter(s => !q.milestones[s]);
+  let xp = 0;
+  remaining.forEach(s => { q.milestones[s] = true; xp += XP_MILESTONE[s] || 0; });
+  xp = Math.round(xp * (DIFF_MULTIPLIER[q.difficulty] || 1));
+  if (xp > 0) { const earned = awardXP(xp, 'submitted'); q.xpEarned += earned; }
+  completeQuest(questId);
+  renderQuestDetail(questId);
+  renderCharacterSheet();
+}
+
 function completeQuest(questId) {
   const q = getQuest(questId);
   if (!q) return;
@@ -803,6 +817,7 @@ function renderQuestDetail(questId) {
       ${!isComplete ? `<button class="pixel-btn primary" onclick="openEditor('${q.id}')">WRITE ESSAY</button>` : ''}
       ${!isComplete && nextStage ? `<button class="pixel-btn" onclick="advanceMilestone('${q.id}')">ADVANCE → ${STAGE_LABELS[nextStage]}</button>` : ''}
       ${!isComplete ? `<button class="pixel-btn" onclick="goToAIEval('${q.id}')">AI EVALUATE</button>` : ''}
+      ${!isComplete ? `<button class="pixel-btn" onclick="markSubmitted('${q.id}')">✓ MARK SUBMITTED</button>` : ''}
     </div>`;
 
   // live countdown — Momo overdue alert fires at most once per quest view
