@@ -805,16 +805,21 @@ function renderQuestDetail(questId) {
       ${!isComplete ? `<button class="pixel-btn" onclick="goToAIEval('${q.id}')">AI EVALUATE</button>` : ''}
     </div>`;
 
-  // live countdown
+  // live countdown — Momo overdue alert fires at most once per quest view
   if (detailTimerInterval) clearInterval(detailTimerInterval);
   if (!isComplete) {
+    let overdueAlerted = checkDeadlineStatus(q) === 'overdue';
+    if (overdueAlerted) showMomo('deadline_warning');
     detailTimerInterval = setInterval(() => {
       const cd = document.getElementById('detail-countdown');
       if (!cd) { clearInterval(detailTimerInterval); return; }
       const st = checkDeadlineStatus(q);
       cd.className = `deadline-display ${st}`;
       cd.textContent = formatCountdown(q);
-      if (st === 'overdue') showMomo('deadline_warning');
+      if (st === 'overdue' && !overdueAlerted) {
+        overdueAlerted = true;
+        showMomo('deadline_warning');
+      }
     }, 1000);
   }
 }
