@@ -8,6 +8,7 @@ const GRADES = ['Balvatika', '1', '2', '3', '4', '5', '6', '7', '8'];
 // ============================================================
 // ROUTING
 // ============================================================
+function ping() { return 'ok'; }
 function doGet(e) {
   const page = (e.parameter && e.parameter.page) || 'dashboard';
   const allowed = { 'monthly-form': 'monthly-form', 'weekly-form': 'weekly-form', 'dashboard': 'dashboard' };
