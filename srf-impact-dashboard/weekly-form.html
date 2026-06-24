@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Tracking</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: #f5f5f0; color: #222; min-height: 100vh; }
+  .header { background: #534AB7; color: #fff; padding: 16px 20px; font-size: 18px; font-weight: 700; }
+  .sub { font-size: 13px; font-weight: 400; opacity: 0.85; margin-top: 2px; }
+  .card { background: #fff; border-radius: 12px; margin: 16px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; margin-top: 14px; }
+  label:first-of-type { margin-top: 0; }
+  select { width: 100%; padding: 12px 14px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 16px; background: #fafafa; appearance: none; }
+  select:focus { outline: none; border-color: #534AB7; }
+  .btn { width: 100%; padding: 18px; border: none; border-radius: 12px; font-size: 18px; font-weight: 700; cursor: pointer; margin-top: 10px; }
+  .btn-primary { background: #534AB7; color: #fff; }
+  .btn-yes { background: #1D9E75; color: #fff; }
+  .btn-no  { background: #E24B4A; color: #fff; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .progress { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .progress-bar { flex: 1; height: 6px; background: #e8e8e8; border-radius: 3px; }
+  .progress-fill { height: 100%; background: #534AB7; border-radius: 3px; transition: width 0.3s; }
+  .progress-text { font-size: 12px; color: #888; white-space: nowrap; }
+  .student-name { font-size: 24px; font-weight: 700; color: #222; text-align: center; margin: 20px 0 8px; }
+  .level-badge { display: block; text-align: center; color: #534AB7; font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+  .competency-display { background: #EDE9FF; border-radius: 10px; padding: 14px 16px; text-align: center; margin: 16px 0; }
+  .competency-display .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #7a72c4; font-weight: 700; margin-bottom: 4px; }
+  .competency-display .name { font-size: 18px; font-weight: 700; color: #534AB7; }
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .done-msg { text-align: center; padding: 40px 20px; }
+  .done-msg h2 { font-size: 22px; font-weight: 700; color: #1D9E75; margin-bottom: 8px; }
+  .error { background: #fff0f0; color: #c00; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 14px; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="header">
+  Weekly Tracking
+  <div class="sub">SRF Foundation · FLN Program</div>
+</div>
+
+<!-- STEP 1: Selection -->
+<div id="stepSelect" class="card">
+  <div class="section-title">Select Session &amp; Competency</div>
+  <label>School</label>
+  <select id="schoolSelect" onchange="onSchoolChange()">
+    <option value="">Loading…</option>
+  </select>
+  <label>Session</label>
+  <select id="sessionSelect" onchange="onSessionChange()">
+    <option value="">Select school first</option>
+  </select>
+  <label>Subject</label>
+  <select id="subjectSelect" onchange="onSubjectChange()">
+    <option value="">Select session first</option>
+  </select>
+  <label>Competency</label>
+  <select id="competencySelect">
+    <option value="">Select subject first</option>
+  </select>
+  <button class="btn btn-primary" onclick="onBegin()">Begin Tracking</button>
+  <div id="selectError" class="error" style="display:none"></div>
+</div>
+
+<!-- STEP 2: Student Yes/No -->
+<div id="stepTrack" class="card" style="display:none">
+  <div class="progress">
+    <div class="progress-bar"><div class="progress-fill" id="trackProgress" style="width:0%"></div></div>
+    <div class="progress-text" id="trackProgressText">Student 1</div>
+  </div>
+  <div class="competency-display">
+    <div class="label">Competency</div>
+    <div class="name" id="competencyName"></div>
+  </div>
+  <div class="student-name" id="trackStudentName"></div>
+  <div class="level-badge" id="trackLevelBadge"></div>
+  <div class="btn-row">
+    <button class="btn btn-yes" onclick="onAnswer(true)">Yes ✓</button>
+    <button class="btn btn-no"  onclick="onAnswer(false)">No ✗</button>
+  </div>
+  <div id="trackError" class="error" style="display:none"></div>
+</div>
+
+<!-- Done -->
+<div id="stepDone" class="done-msg" style="display:none">
+  <div style="font-size:48px;margin-bottom:12px">✅</div>
+  <h2>All Done!</h2>
+  <p style="color:#666">Competency tracking saved for all students.</p>
+  <button class="btn btn-primary" style="max-width:300px;margin:24px auto 0" onclick="location.reload()">Track Another Competency</button>
+</div>
+
+<script>
+  let state = {
+    schools: [], sessions: [], students: [],
+    schoolId: null, sessionId: null,
+    subject: null, competency: null,
+    studentIndex: 0,
+    entries: []
+  };
+
+  google.script.run.withSuccessHandler(schools => {
+    state.schools = schools;
+    const sel = document.getElementById('schoolSelect');
+    sel.innerHTML = '<option value="">— Select School —</option>' +
+      schools.map(s => `<option value="${s.school_id}">${s.school_name}</option>`).join('');
+  }).getSchools();
+
+  function onSchoolChange() {
+    state.schoolId = document.getElementById('schoolSelect').value;
+    if (!state.schoolId) return;
+    google.script.run.withSuccessHandler(sessions => {
+      state.sessions = sessions;
+      const sel = document.getElementById('sessionSelect');
+      sel.innerHTML = '<option value="">— Select Session —</option>' +
+        sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('');
+      document.getElementById('subjectSelect').innerHTML = '<option value="">Select session first</option>';
+      document.getElementById('competencySelect').innerHTML = '<option value="">Select subject first</option>';
+    }).getSessions(state.schoolId);
+  }
+
+  function onSessionChange() {
+    state.sessionId = document.getElementById('sessionSelect').value;
+    if (!state.sessionId) return;
+    document.getElementById('subjectSelect').innerHTML =
+      '<option value="">— Select Subject —</option>' +
+      ['Hindi','English','Numeracy'].map(s => `<option value="${s}">${s}</option>`).join('');
+    document.getElementById('competencySelect').innerHTML = '<option value="">Select subject first</option>';
+  }
+
+  function onSubjectChange() {
+    state.subject = document.getElementById('subjectSelect').value;
+    if (!state.subject || !state.sessionId) return;
+
+    // We need to know which level to load competencies for.
+    // Load students first, determine most common level for this session.
+    google.script.run.withSuccessHandler(students => {
+      state.students = students;
+      // Determine level by majority or just load all competencies per level
+      // For simplicity, load competencies for the level the students are currently at.
+      // Since tracking is per-competency (which has a level), and we show only students
+      // at that competency's level, we derive level from competency selection.
+      // Load all competencies for this subject across all levels:
+      loadCompetenciesForSubject(state.subject);
+    }).getEnrolledStudentsWithLevel(state.sessionId, 3);
+  }
+
+  function loadCompetenciesForSubject(subject) {
+    // Load competencies for all levels grouped
+    const levels = ['L1','L2','L3'];
+    let loaded = 0, allComps = [];
+    levels.forEach(level => {
+      google.script.run.withSuccessHandler(comps => {
+        comps.forEach(c => allComps.push({ ...c, level }));
+        loaded++;
+        if (loaded === levels.length) {
+          renderCompetencyDropdown(allComps);
+        }
+      }).getCompetencies(level, subject);
+    });
+  }
+
+  function renderCompetencyDropdown(comps) {
+    const sel = document.getElementById('competencySelect');
+    sel.innerHTML = '<option value="">— Select Competency —</option>';
+    ['L1','L2','L3'].forEach(lv => {
+      const group = comps.filter(c => c.level === lv);
+      if (!group.length) return;
+      const og = document.createElement('optgroup');
+      og.label = `Level ${lv}`;
+      group.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = JSON.stringify({ name: c.competency_name, week: c.week_number, level: c.level });
+        opt.textContent = `Wk ${c.week_number} — ${c.competency_name}`;
+        og.appendChild(opt);
+      });
+      sel.appendChild(og);
+    });
+  }
+
+  function onBegin() {
+    const compVal = document.getElementById('competencySelect').value;
+    if (!state.sessionId || !state.subject || !compVal) {
+      showError('selectError', 'Please complete all selections.'); return;
+    }
+    state.competency = JSON.parse(compVal);
+
+    // Filter students to those at this competency's level
+    const targetLevel = state.competency.level;
+    const filtered = state.students.filter(s => s.current_level === targetLevel);
+    if (!filtered.length) {
+      showError('selectError', `No students at ${targetLevel} for this session.`); return;
+    }
+    state.students = filtered;
+    state.studentIndex = 0;
+    state.entries = [];
+
+    document.getElementById('competencyName').textContent = state.competency.name;
+    hide('stepSelect');
+    show('stepTrack');
+    renderTrackStudent();
+  }
+
+  function renderTrackStudent() {
+    const stu = state.students[state.studentIndex];
+    const total = state.students.length;
+    document.getElementById('trackProgress').style.width = `${(state.studentIndex / total) * 100}%`;
+    document.getElementById('trackProgressText').textContent = `${state.studentIndex + 1} of ${total}`;
+    document.getElementById('trackStudentName').textContent = stu.name;
+    document.getElementById('trackLevelBadge').textContent = stu.current_level;
+    document.getElementById('trackError').style.display = 'none';
+  }
+
+  function onAnswer(passed) {
+    const stu = state.students[state.studentIndex];
+    state.entries.push({
+      enrollmentId: stu.enrollment_id,
+      competencyName: state.competency.name,
+      weekNumber: state.competency.week,
+      subject: state.subject,
+      passed
+    });
+
+    state.studentIndex++;
+    if (state.studentIndex >= state.students.length) {
+      // Submit all at once
+      google.script.run
+        .withSuccessHandler(() => {
+          hide('stepTrack');
+          show('stepDone');
+        })
+        .withFailureHandler(err => showError('trackError', err.message))
+        .submitWeeklyTracking(state.entries);
+    } else {
+      renderTrackStudent();
+    }
+  }
+
+  function show(id) { document.getElementById(id).style.display = ''; }
+  function hide(id) { document.getElementById(id).style.display = 'none'; }
+  function showError(id, msg) { const el = document.getElementById(id); el.textContent = msg; el.style.display = 'block'; }
+</script>
+</body>
+</html>
