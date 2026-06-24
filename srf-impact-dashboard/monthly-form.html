@@ -162,25 +162,44 @@
     isNewSession: false
   };
 
+  function _showGlobalError(msg) {
+    showError('stepSchoolError', 'Script error: ' + msg);
+    show('stepSchool');
+  }
+
   // Load schools on page load
-  google.script.run.withSuccessHandler(schools => {
-    state.schools = schools;
-    const sel = document.getElementById('schoolSelect');
-    sel.innerHTML = '<option value="">— Select School —</option>' +
-      schools.map(s => `<option value="${s.school_id}">${s.school_name}</option>`).join('');
-  }).getSchools();
+  google.script.run
+    .withSuccessHandler(schools => {
+      state.schools = schools;
+      const sel = document.getElementById('schoolSelect');
+      if (!schools || !schools.length) {
+        sel.innerHTML = '<option value="">No schools found — run setupDatabase()</option>';
+        return;
+      }
+      sel.innerHTML = '<option value="">— Select School —</option>' +
+        schools.map(s => `<option value="${s.school_id}">${s.school_name}</option>`).join('');
+    })
+    .withFailureHandler(err => _showGlobalError(err.message))
+    .getSchools();
 
   function onSchoolChange() {
     const schoolId = document.getElementById('schoolSelect').value;
     state.schoolId = schoolId;
     if (!schoolId) return;
-    google.script.run.withSuccessHandler(sessions => {
-      state.sessions = sessions;
-      const sel = document.getElementById('sessionSelect');
-      sel.innerHTML = '<option value="">— Select Session —</option>' +
-        sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('') +
-        '<option value="new">+ Create New Session</option>';
-    }).getSessions(schoolId);
+    document.getElementById('sessionSelect').innerHTML = '<option value="">Loading…</option>';
+    google.script.run
+      .withSuccessHandler(sessions => {
+        state.sessions = sessions;
+        const sel = document.getElementById('sessionSelect');
+        sel.innerHTML = '<option value="">— Select Session —</option>' +
+          sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('') +
+          '<option value="new">+ Create New Session</option>';
+      })
+      .withFailureHandler(err => {
+        document.getElementById('sessionSelect').innerHTML = '<option value="">Error loading sessions</option>';
+        _showGlobalError(err.message);
+      })
+      .getSessions(schoolId);
   }
 
   function onSessionChange() {
