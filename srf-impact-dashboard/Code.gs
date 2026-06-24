@@ -330,6 +330,15 @@ function getSessions(schoolId) {
   );
 }
 
+// Loads all schools + sessions in one call so the form needs only one
+// google.script.run invocation on page load instead of two sequential ones.
+function getFormInitialData() {
+  return {
+    schools: _sheetData('schools'),
+    sessions: _sheetData('sessions')
+  };
+}
+
 function createSession(schoolId, volunteerName, startDate, endDate) {
   const id = _nextId('sessions', 'session_id');
   _appendRow('sessions', [id, schoolId, volunteerName, startDate, endDate]);

@@ -167,39 +167,38 @@
     show('stepSchool');
   }
 
-  // Load schools on page load
+  // Load all schools + sessions in ONE call on page load.
+  // Session filtering is done client-side to avoid a second google.script.run call.
   google.script.run
-    .withSuccessHandler(schools => {
-      state.schools = schools;
+    .withSuccessHandler(data => {
+      state.schools = data.schools || [];
+      state.allSessions = data.sessions || [];
       const sel = document.getElementById('schoolSelect');
-      if (!schools || !schools.length) {
+      if (!state.schools.length) {
         sel.innerHTML = '<option value="">No schools found — run setupDatabase()</option>';
         return;
       }
       sel.innerHTML = '<option value="">— Select School —</option>' +
-        schools.map(s => `<option value="${s.school_id}">${s.school_name}</option>`).join('');
+        state.schools.map(s => `<option value="${s.school_id}">${s.school_name}</option>`).join('');
     })
     .withFailureHandler(err => _showGlobalError(err.message))
-    .getSchools();
+    .getFormInitialData();
 
   function onSchoolChange() {
     const schoolId = document.getElementById('schoolSelect').value;
     state.schoolId = schoolId;
-    if (!schoolId) return;
-    document.getElementById('sessionSelect').innerHTML = '<option value="">Loading…</option>';
-    google.script.run
-      .withSuccessHandler(sessions => {
-        state.sessions = sessions;
-        const sel = document.getElementById('sessionSelect');
-        sel.innerHTML = '<option value="">— Select Session —</option>' +
-          sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('') +
-          '<option value="new">+ Create New Session</option>';
-      })
-      .withFailureHandler(err => {
-        document.getElementById('sessionSelect').innerHTML = '<option value="">Error loading sessions</option>';
-        _showGlobalError(err.message);
-      })
-      .getSessions(schoolId);
+    const sel = document.getElementById('sessionSelect');
+    if (!schoolId) {
+      sel.innerHTML = '<option value="">Select school first</option>';
+      return;
+    }
+    const sessions = (state.allSessions || []).filter(
+      s => String(s.school_id) === String(schoolId)
+    );
+    state.sessions = sessions;
+    sel.innerHTML = '<option value="">— Select Session —</option>' +
+      sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('') +
+      '<option value="new">+ Create New Session</option>';
   }
 
   function onSessionChange() {

@@ -100,24 +100,30 @@
     entries: []
   };
 
-  google.script.run.withSuccessHandler(schools => {
-    state.schools = schools;
-    const sel = document.getElementById('schoolSelect');
-    sel.innerHTML = '<option value="">— Select School —</option>' +
-      schools.map(s => `<option value="${s.school_id}">${s.school_name}</option>`).join('');
-  }).getSchools();
+  // Load all schools + sessions in ONE call to avoid sequential google.script.run calls.
+  google.script.run
+    .withSuccessHandler(data => {
+      state.schools = data.schools || [];
+      state.allSessions = data.sessions || [];
+      const sel = document.getElementById('schoolSelect');
+      sel.innerHTML = '<option value="">— Select School —</option>' +
+        state.schools.map(s => `<option value="${s.school_id}">${s.school_name}</option>`).join('');
+    })
+    .withFailureHandler(err => showError('selectError', 'Load error: ' + err.message))
+    .getFormInitialData();
 
   function onSchoolChange() {
     state.schoolId = document.getElementById('schoolSelect').value;
-    if (!state.schoolId) return;
-    google.script.run.withSuccessHandler(sessions => {
-      state.sessions = sessions;
-      const sel = document.getElementById('sessionSelect');
-      sel.innerHTML = '<option value="">— Select Session —</option>' +
-        sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('');
-      document.getElementById('subjectSelect').innerHTML = '<option value="">Select session first</option>';
-      document.getElementById('competencySelect').innerHTML = '<option value="">Select subject first</option>';
-    }).getSessions(state.schoolId);
+    const sel = document.getElementById('sessionSelect');
+    if (!state.schoolId) { sel.innerHTML = '<option value="">Select school first</option>'; return; }
+    const sessions = (state.allSessions || []).filter(
+      s => String(s.school_id) === String(state.schoolId)
+    );
+    state.sessions = sessions;
+    sel.innerHTML = '<option value="">— Select Session —</option>' +
+      sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('');
+    document.getElementById('subjectSelect').innerHTML = '<option value="">Select session first</option>';
+    document.getElementById('competencySelect').innerHTML = '<option value="">Select subject first</option>';
   }
 
   function onSessionChange() {
