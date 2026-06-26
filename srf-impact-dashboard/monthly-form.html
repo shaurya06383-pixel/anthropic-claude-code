@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monthly Assessment</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: sans-serif; background: #f5f5f0; color: #222; min-height: 100vh; }
+  .header { background: #534AB7; color: #fff; padding: 16px 20px; font-size: 18px; font-weight: 700; }
+  .sub { font-size: 13px; font-weight: 400; opacity: 0.85; margin-top: 2px; }
+  .card { background: #fff; border-radius: 12px; margin: 16px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 6px; margin-top: 14px; }
+  label:first-of-type { margin-top: 0; }
+  select, input[type=text], input[type=number], input[type=date] {
+    width: 100%; padding: 12px 14px; border: 1.5px solid #ddd; border-radius: 8px;
+    font-size: 16px; background: #fafafa; appearance: none;
+  }
+  select:focus, input:focus { outline: none; border-color: #534AB7; }
+  .btn { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 16px; }
+  .btn-primary { background: #534AB7; color: #fff; }
+  .btn-secondary { background: #f0f0f0; color: #444; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .progress { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .progress-bar { flex: 1; height: 6px; background: #e8e8e8; border-radius: 3px; }
+  .progress-fill { height: 100%; background: #534AB7; border-radius: 3px; transition: width 0.3s; }
+  .progress-text { font-size: 12px; color: #888; white-space: nowrap; }
+  .student-name { font-size: 20px; font-weight: 700; color: #222; }
+  .level-badge { display: inline-block; background: #EDE9FF; color: #534AB7; border-radius: 20px; padding: 3px 12px; font-size: 13px; font-weight: 600; margin-left: 8px; }
+  .score-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .score-field label { font-size: 12px; }
+  .done-msg { text-align: center; padding: 40px 20px; }
+  .done-msg .icon { font-size: 48px; margin-bottom: 12px; }
+  .done-msg h2 { font-size: 22px; font-weight: 700; color: #1D9E75; margin-bottom: 8px; }
+  .done-msg p { color: #666; font-size: 15px; }
+  .error { background: #fff0f0; color: #c00; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 14px; }
+  .info-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .info-chip { background: #f0f0f0; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #555; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="header">
+  Monthly Assessment
+  <div class="sub" id="headerSub">SRF Foundation · FLN Program</div>
+</div>
+
+<!-- STEP 1: School + Session Selection -->
+<div id="stepSchool" class="card">
+  <div class="section-title">Step 1 of 3 — Select School &amp; Session</div>
+  <label>School</label>
+  <select id="schoolSelect" onchange="onSchoolChange()">
+    <option value="">Loading schools…</option>
+  </select>
+  <label>Session</label>
+  <select id="sessionSelect" onchange="onSessionChange()">
+    <option value="">Select school first</option>
+  </select>
+  <label>Month</label>
+  <select id="monthSelect">
+    <option value="1">Month 1</option>
+    <option value="2">Month 2</option>
+    <option value="3">Month 3</option>
+  </select>
+  <label>Assessment Type</label>
+  <select id="typeSelect">
+    <option value="pre">Pre-Assessment</option>
+    <option value="post">Post-Assessment</option>
+  </select>
+  <button class="btn btn-primary" onclick="onSelectionDone()">Continue</button>
+  <div id="stepSchoolError" class="error" style="display:none"></div>
+</div>
+
+<!-- STEP 2A: Session creation (Month 1 Pre only) -->
+<div id="stepCreateSession" class="card" style="display:none">
+  <div class="section-title">New Session Setup</div>
+  <p style="font-size:14px;color:#666;margin-bottom:14px">No session found for this school. Create one before enrolling students.</p>
+  <label>Your Name (Volunteer)</label>
+  <input type="text" id="volunteerName" placeholder="Enter your name">
+  <label>Session Start Date</label>
+  <input type="date" id="startDate">
+  <label>Session End Date</label>
+  <input type="date" id="endDate">
+  <button class="btn btn-primary" onclick="onCreateSession()">Create Session &amp; Continue</button>
+  <button class="btn btn-secondary" onclick="goBack()">Back</button>
+  <div id="createSessionError" class="error" style="display:none"></div>
+</div>
+
+<!-- STEP 2B: Student entry (Month 1 Pre — new enrollment) -->
+<div id="stepEnroll" class="card" style="display:none">
+  <div class="progress">
+    <div class="progress-bar"><div class="progress-fill" id="enrollProgress" style="width:0%"></div></div>
+    <div class="progress-text" id="enrollProgressText">Student 1</div>
+  </div>
+  <div class="section-title">New Student Entry</div>
+  <label>Student Name</label>
+  <input type="text" id="enrollName" placeholder="Full name">
+  <label>Gender</label>
+  <select id="enrollGender">
+    <option value="Male">Male</option>
+    <option value="Female">Female</option>
+    <option value="Other">Other</option>
+  </select>
+  <label>Date of Birth</label>
+  <input type="date" id="enrollDOB">
+  <label>Class / Grade</label>
+  <select id="enrollGrade">
+    <option value="Balvatika">Balvatika</option>
+    <option value="1">Class 1</option>
+    <option value="2">Class 2</option>
+    <option value="3">Class 3</option>
+    <option value="4">Class 4</option>
+    <option value="5">Class 5</option>
+    <option value="6">Class 6</option>
+    <option value="7">Class 7</option>
+    <option value="8">Class 8</option>
+  </select>
+  <label>Pre-Test Scores (0–10)</label>
+  <div class="score-row">
+    <div class="score-field"><label>Hindi</label><input type="number" id="enrollHindi" min="0" max="10" placeholder="0–10"></div>
+    <div class="score-field"><label>English</label><input type="number" id="enrollEnglish" min="0" max="10" placeholder="0–10"></div>
+    <div class="score-field"><label>Numeracy</label><input type="number" id="enrollNumeracy" min="0" max="10" placeholder="0–10"></div>
+  </div>
+  <button class="btn btn-primary" onclick="onEnrollNext()">Save &amp; Next Student</button>
+  <button class="btn btn-secondary" onclick="onEnrollDone()">Done — All Students Entered</button>
+  <div id="enrollError" class="error" style="display:none"></div>
+</div>
+
+<!-- STEP 3: Score entry (Month 2/3 or post) -->
+<div id="stepScores" class="card" style="display:none">
+  <div class="progress">
+    <div class="progress-bar"><div class="progress-fill" id="scoreProgress" style="width:0%"></div></div>
+    <div class="progress-text" id="scoreProgressText">Student 1</div>
+  </div>
+  <div class="info-row" id="scoreInfoRow"></div>
+  <div class="student-name" id="scoreStudentName"></div>
+  <span class="level-badge" id="scoreLevelBadge"></span>
+  <label style="margin-top:18px">Scores (0–10)</label>
+  <div class="score-row">
+    <div class="score-field"><label>Hindi</label><input type="number" id="scoreHindi" min="0" max="10" placeholder="0–10"></div>
+    <div class="score-field"><label>English</label><input type="number" id="scoreEnglish" min="0" max="10" placeholder="0–10"></div>
+    <div class="score-field"><label>Numeracy</label><input type="number" id="scoreNumeracy" min="0" max="10" placeholder="0–10"></div>
+  </div>
+  <button class="btn btn-primary" id="scoreNextBtn" onclick="onScoreNext()">Save &amp; Next</button>
+  <div id="scoreError" class="error" style="display:none"></div>
+</div>
+
+<!-- Done -->
+<div id="stepDone" style="display:none" class="done-msg">
+  <div class="icon">✅</div>
+  <h2>All Done!</h2>
+  <p>All students have been recorded for this assessment.</p>
+  <button class="btn btn-primary" style="max-width:300px;margin:24px auto 0" onclick="location.reload()">Start New Assessment</button>
+</div>
+
+<script>
+  let state = {
+    schools: [], sessions: [],
+    schoolId: null, sessionId: null,
+    month: 1, type: 'pre',
+    students: [], studentIndex: 0,
+    isNewSession: false
+  };
+
+  function _showGlobalError(msg) {
+    showError('stepSchoolError', 'Script error: ' + msg);
+    show('stepSchool');
+  }
+
+  // Load all schools + sessions in ONE call on page load.
+  // Session filtering is done client-side to avoid a second google.script.run call.
+  google.script.run
+    .withSuccessHandler(data => {
+      state.schools = data.schools || [];
+      state.allSessions = data.sessions || [];
+      const sel = document.getElementById('schoolSelect');
+      if (!state.schools.length) {
+        sel.innerHTML = '<option value="">No schools found — run setupDatabase()</option>';
+        return;
+      }
+      sel.innerHTML = '<option value="">— Select School —</option>' +
+        state.schools.map(s => `<option value="${s.school_id}">${s.school_name}</option>`).join('');
+    })
+    .withFailureHandler(err => _showGlobalError(err.message))
+    .getFormInitialData();
+
+  function onSchoolChange() {
+    const schoolId = document.getElementById('schoolSelect').value;
+    state.schoolId = schoolId;
+    const sel = document.getElementById('sessionSelect');
+    if (!schoolId) {
+      sel.innerHTML = '<option value="">Select school first</option>';
+      return;
+    }
+    const sessions = (state.allSessions || []).filter(
+      s => String(s.school_id) === String(schoolId)
+    );
+    state.sessions = sessions;
+    sel.innerHTML = '<option value="">— Select Session —</option>' +
+      sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('') +
+      '<option value="new">+ Create New Session</option>';
+  }
+
+  function onSessionChange() {
+    state.sessionId = document.getElementById('sessionSelect').value;
+  }
+
+  function onSelectionDone() {
+    const schoolId = document.getElementById('schoolSelect').value;
+    const sessionVal = document.getElementById('sessionSelect').value;
+    const month = Number(document.getElementById('monthSelect').value);
+    const type = document.getElementById('typeSelect').value;
+
+    if (!schoolId || !sessionVal) {
+      showError('stepSchoolError', 'Please select a school and session.');
+      return;
+    }
+
+    state.schoolId = schoolId;
+    state.month = month;
+    state.type = type;
+
+    if (sessionVal === 'new' || (month === 1 && type === 'pre')) {
+      // Show session creation (only relevant for Month 1 Pre or new session)
+      if (sessionVal === 'new') {
+        show('stepCreateSession');
+        hide('stepSchool');
+      } else {
+        state.sessionId = sessionVal;
+        loadScoreStep();
+      }
+      return;
+    }
+
+    state.sessionId = sessionVal;
+
+    if (month === 1 && type === 'pre') {
+      show('stepEnroll');
+      hide('stepSchool');
+      updateEnrollProgress();
+    } else {
+      loadScoreStep();
+    }
+  }
+
+  function onCreateSession() {
+    const name = document.getElementById('volunteerName').value.trim();
+    const start = document.getElementById('startDate').value;
+    const end = document.getElementById('endDate').value;
+    if (!name || !start || !end) { showError('createSessionError', 'All fields are required.'); return; }
+
+    google.script.run
+      .withSuccessHandler(res => {
+        state.sessionId = res.session_id;
+        hide('stepCreateSession');
+        if (state.month === 1 && state.type === 'pre') {
+          show('stepEnroll');
+          updateEnrollProgress();
+        } else {
+          loadScoreStep();
+        }
+      })
+      .withFailureHandler(err => showError('createSessionError', err.message))
+      .createSession(state.schoolId, name, start, end);
+  }
+
+  function updateEnrollProgress() {
+    const idx = state.studentIndex;
+    document.getElementById('enrollProgressText').textContent = `Student ${idx + 1}`;
+    document.getElementById('enrollProgress').style.width = `${Math.min(((idx) / Math.max(idx + 1, 1)) * 100, 95)}%`;
+  }
+
+  function onEnrollNext() {
+    const name = document.getElementById('enrollName').value.trim();
+    const gender = document.getElementById('enrollGender').value;
+    const dob = document.getElementById('enrollDOB').value;
+    const grade = document.getElementById('enrollGrade').value;
+    const h = document.getElementById('enrollHindi').value;
+    const e = document.getElementById('enrollEnglish').value;
+    const n = document.getElementById('enrollNumeracy').value;
+
+    if (!name || !dob || h === '' || e === '' || n === '') {
+      showError('enrollError', 'Please fill in all fields.'); return;
+    }
+    if ([h,e,n].some(v => Number(v) < 0 || Number(v) > 10)) {
+      showError('enrollError', 'Scores must be between 0 and 10.'); return;
+    }
+
+    const btn = document.querySelector('#stepEnroll .btn-primary');
+    btn.disabled = true;
+
+    google.script.run
+      .withSuccessHandler(() => {
+        state.studentIndex++;
+        updateEnrollProgress();
+        clearEnrollForm();
+        document.getElementById('enrollError').style.display = 'none';
+        btn.disabled = false;
+      })
+      .withFailureHandler(err => {
+        showError('enrollError', err.message);
+        btn.disabled = false;
+      })
+      .createStudentAndEnroll(state.sessionId, { name, gender, date_of_birth: dob, grade, hindi_score: h, english_score: e, numeracy_score: n });
+  }
+
+  function clearEnrollForm() {
+    ['enrollName','enrollDOB','enrollHindi','enrollEnglish','enrollNumeracy'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+  }
+
+  function onEnrollDone() {
+    if (state.studentIndex === 0) { showError('enrollError', 'Please enter at least one student.'); return; }
+    hide('stepEnroll');
+    show('stepDone');
+  }
+
+  function loadScoreStep() {
+    hide('stepSchool');
+    hide('stepCreateSession');
+    google.script.run
+      .withSuccessHandler(students => {
+        state.students = students;
+        state.studentIndex = 0;
+        if (!students.length) {
+          showError('stepSchoolError', 'No students enrolled in this session.');
+          show('stepSchool');
+          return;
+        }
+        hide('stepSchool');
+        show('stepScores');
+        renderScoreStudent();
+      })
+      .getEnrolledStudentsWithLevel(state.sessionId, state.month);
+  }
+
+  function renderScoreStudent() {
+    const stu = state.students[state.studentIndex];
+    const total = state.students.length;
+    const idx = state.studentIndex;
+
+    document.getElementById('scoreProgress').style.width = `${(idx / total) * 100}%`;
+    document.getElementById('scoreProgressText').textContent = `${idx + 1} of ${total}`;
+    document.getElementById('scoreStudentName').textContent = stu.name;
+    document.getElementById('scoreLevelBadge').textContent = stu.current_level || 'L1';
+    document.getElementById('scoreInfoRow').innerHTML =
+      `<span class="info-chip">Month ${state.month}</span>` +
+      `<span class="info-chip">${state.type === 'pre' ? 'Pre-Assessment' : 'Post-Assessment'}</span>` +
+      `<span class="info-chip">Grade ${stu.grade}</span>`;
+    document.getElementById('scoreNextBtn').textContent = idx === total - 1 ? 'Save &amp; Finish' : 'Save &amp; Next';
+    ['scoreHindi','scoreEnglish','scoreNumeracy'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('scoreError').style.display = 'none';
+  }
+
+  function onScoreNext() {
+    const h = document.getElementById('scoreHindi').value;
+    const e = document.getElementById('scoreEnglish').value;
+    const n = document.getElementById('scoreNumeracy').value;
+
+    if (h === '' || e === '' || n === '') { showError('scoreError', 'Enter all three scores.'); return; }
+    if ([h,e,n].some(v => Number(v) < 0 || Number(v) > 10)) {
+      showError('scoreError', 'Scores must be 0–10.'); return;
+    }
+
+    const stu = state.students[state.studentIndex];
+    const btn = document.getElementById('scoreNextBtn');
+    btn.disabled = true;
+
+    google.script.run
+      .withSuccessHandler(() => {
+        state.studentIndex++;
+        btn.disabled = false;
+        if (state.studentIndex >= state.students.length) {
+          hide('stepScores');
+          show('stepDone');
+        } else {
+          renderScoreStudent();
+        }
+      })
+      .withFailureHandler(err => {
+        showError('scoreError', err.message);
+        btn.disabled = false;
+      })
+      .submitMonthlyScores(stu.enrollment_id, state.month, state.type, Number(h), Number(e), Number(n));
+  }
+
+  function goBack() {
+    hide('stepCreateSession');
+    show('stepSchool');
+  }
+
+  function show(id) { document.getElementById(id).style.display = ''; }
+  function hide(id) { document.getElementById(id).style.display = 'none'; }
+  function showError(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+</script>
+</body>
+</html>

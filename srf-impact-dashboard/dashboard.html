@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRF Impact Dashboard</title>
+<script src="https://www.gstatic.com/charts/loader.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f5f5f0; color: #222; }
+  .topbar { background: #534AB7; color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar h1 { font-size: 20px; font-weight: 700; }
+  .topbar .sub { font-size: 13px; opacity: 0.8; margin-top: 2px; }
+  .topbar-right { display: flex; gap: 10px; align-items: center; }
+  select.session-pick { padding: 8px 12px; border-radius: 8px; border: none; font-size: 14px; background: rgba(255,255,255,0.2); color: #fff; }
+  select.session-pick option { background: #534AB7; }
+
+  .section { margin: 20px 16px; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .section-title { font-size: 17px; font-weight: 700; color: #222; }
+  .section-num { display: inline-block; width: 26px; height: 26px; border-radius: 50%; background: #534AB7; color: #fff; font-size: 13px; font-weight: 700; text-align: center; line-height: 26px; margin-right: 8px; }
+
+  .toggle-row { display: flex; background: #ebebeb; border-radius: 8px; padding: 3px; gap: 3px; }
+  .toggle-btn { padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: transparent; color: #666; transition: all 0.15s; }
+  .toggle-btn.active { background: #fff; color: #534AB7; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+
+  .metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .metric-row.four { grid-template-columns: repeat(4, 1fr); }
+  .metric-card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .metric-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #888; margin-bottom: 6px; }
+  .metric-value { font-size: 24px; font-weight: 800; color: #222; line-height: 1; }
+  .metric-sub { font-size: 12px; color: #888; margin-top: 4px; }
+  .metric-pct { font-size: 14px; font-weight: 600; margin-left: 4px; }
+
+  .chart-card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 12px; }
+  .chart-card-title { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 10px; }
+  .chart-container { width: 100%; }
+
+  .level-toggle-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .level-btn { flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; background: #fff; color: #666; transition: all 0.15s; }
+  .level-btn.active { border-color: #534AB7; background: #EDE9FF; color: #534AB7; }
+
+  .achieve-top { background: linear-gradient(135deg, #534AB7, #6B63CC); border-radius: 12px; padding: 18px; color: #fff; margin-bottom: 14px; text-align: center; }
+  .achieve-top .big { font-size: 48px; font-weight: 800; line-height: 1; }
+  .achieve-top .label { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+
+  .subj-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+  .subj-card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .subj-name { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #888; margin-bottom: 6px; }
+  .subj-pct { font-size: 22px; font-weight: 800; }
+  .subj-change { font-size: 12px; margin-top: 4px; font-weight: 600; }
+  .subj-change.up { color: #1D9E75; }
+  .subj-change.down { color: #E24B4A; }
+
+  .loading { text-align: center; padding: 40px; color: #888; font-size: 15px; }
+  @media (max-width: 480px) {
+    .metric-row.four { grid-template-columns: repeat(2, 1fr); }
+    .subj-cards { grid-template-columns: repeat(3, 1fr); }
+    .metric-value { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="topbar h1">SRF Impact Dashboard</div>
+    <div class="sub">FLN Remedial Program 2026</div>
+  </div>
+  <div class="topbar-right">
+    <select class="session-pick" id="globalSession" onchange="onSessionChange()">
+      <option value="">All Sessions</option>
+    </select>
+  </div>
+</div>
+
+<div id="mainContent">
+  <div class="loading">Loading data…</div>
+</div>
+
+<script>
+google.charts.load('current', { packages: ['corechart', 'bar'] });
+google.charts.setOnLoadCallback(init);
+
+const C = {
+  mainstreamed: '#1D9E75', remaining: '#D3D1C7',
+  atLevel: '#534AB7', misplaced: '#AFA9EC',
+  promoted: '#1D9E75', retainedProg: '#378ADD', retainedFloor: '#D3D1C7', relegated: '#E24B4A',
+  hindi: '#1D9E75', english: '#534AB7', numeracy: '#BA7517'
+};
+
+let sessions = [];
+let selectedSession = '';
+let mainScope = 'session', larlScope = 'session', achieveLevel = 'L1';
+
+function init() {
+  google.script.run
+    .withSuccessHandler(s => {
+      sessions = s;
+      const sel = document.getElementById('globalSession');
+      sel.innerHTML = '<option value="">All Sessions</option>' +
+        s.map(ss => `<option value="${ss.session_id}">${ss.school_name} — ${ss.volunteer_name}</option>`).join('');
+      renderAll();
+    })
+    .withFailureHandler(err => {
+      document.getElementById('mainContent').innerHTML = `<div class="loading" style="color:#c00">Error: ${err.message}</div>`;
+    })
+    .getAllSessions();
+}
+
+function onSessionChange() {
+  selectedSession = document.getElementById('globalSession').value;
+  renderAll();
+}
+
+function renderAll() {
+  document.getElementById('mainContent').innerHTML = buildSkeleton();
+  renderMainstreaming();
+  renderLaRL();
+  renderOutcomes();
+  renderAchievement();
+}
+
+function buildSkeleton() {
+  return `
+  <!-- Section 1 -->
+  <div class="section" id="s1">
+    <div class="section-header">
+      <div><span class="section-num">1</span><span class="section-title">Mainstreaming</span></div>
+      <div class="toggle-row">
+        <button class="toggle-btn ${mainScope==='session'?'active':''}" onclick="setScope('main','session')">Per Session</button>
+        <button class="toggle-btn ${mainScope==='month'?'active':''}" onclick="setScope('main','month')">Per Month</button>
+      </div>
+    </div>
+    <div class="metric-row" id="mainMetrics"><div class="loading">…</div></div>
+    <div class="chart-card"><div class="chart-card-title">By Cohort (Session)</div><div class="chart-container" id="chartMain1" style="height:220px"></div></div>
+    <div class="chart-card"><div class="chart-card-title">By Level</div><div class="chart-container" id="chartMain2" style="height:220px"></div></div>
+    <div class="chart-card"><div class="chart-card-title">By Grade (%)</div><div class="chart-container" id="chartMain3" style="height:220px"></div></div>
+  </div>
+
+  <!-- Section 2 -->
+  <div class="section" id="s2">
+    <div class="section-header">
+      <div><span class="section-num">2</span><span class="section-title">Learning at the Right Level (LaRL)</span></div>
+      <div class="toggle-row">
+        <button class="toggle-btn ${larlScope==='session'?'active':''}" onclick="setScope('larl','session')">Per Session</button>
+        <button class="toggle-btn ${larlScope==='month'?'active':''}" onclick="setScope('larl','month')">Per Month</button>
+      </div>
+    </div>
+    <div class="metric-row" id="larlMetrics"><div class="loading">…</div></div>
+    <div class="chart-card"><div class="chart-card-title">At Right Level vs Not Yet</div><div class="chart-container" id="chartLaRL1" style="height:220px"></div></div>
+    <div class="chart-card"><div class="chart-card-title">Trend Across Months</div><div class="chart-container" id="chartLaRL2" style="height:220px"></div></div>
+    <div class="chart-card"><div class="chart-card-title">Movement by Expected Level Group</div><div class="chart-container" id="chartLaRL3" style="height:220px"></div></div>
+  </div>
+
+  <!-- Section 3 -->
+  <div class="section" id="s3">
+    <div class="section-header">
+      <div><span class="section-num">3</span><span class="section-title">Promotion, Retention &amp; Relegation</span></div>
+    </div>
+    <div class="metric-row four" id="outMetrics"><div class="loading">…</div></div>
+    <div id="outSubjCards"></div>
+    <div class="chart-card"><div class="chart-card-title">By Month</div><div class="chart-container" id="chartOut1" style="height:240px"></div></div>
+    <div class="chart-card"><div class="chart-card-title">By Level</div><div class="chart-container" id="chartOut2" style="height:240px"></div></div>
+  </div>
+
+  <!-- Section 4 -->
+  <div class="section" id="s4">
+    <div class="section-header">
+      <div><span class="section-num">4</span><span class="section-title">Achievement Ratio</span></div>
+    </div>
+    <div class="level-toggle-row">
+      <button class="level-btn ${achieveLevel==='L1'?'active':''}" onclick="setAchieveLevel('L1')">L1</button>
+      <button class="level-btn ${achieveLevel==='L2'?'active':''}" onclick="setAchieveLevel('L2')">L2</button>
+      <button class="level-btn ${achieveLevel==='L3'?'active':''}" onclick="setAchieveLevel('L3')">L3</button>
+    </div>
+    <div id="achieveContent"><div class="loading">…</div></div>
+  </div>`;
+}
+
+// ── Section 1: Mainstreaming ──────────────────────────────────
+function renderMainstreaming() {
+  google.script.run
+    .withSuccessHandler(data => {
+      const pct = data.total ? Math.round(data.mainstreamed / data.total * 100) : 0;
+      document.getElementById('mainMetrics').innerHTML = `
+        <div class="metric-card"><div class="metric-label">Total Enrolled</div><div class="metric-value">${data.total}</div></div>
+        <div class="metric-card"><div class="metric-label">Mainstreamed</div><div class="metric-value">${data.mainstreamed}<span class="metric-pct" style="color:${C.mainstreamed}">${pct}%</span></div></div>
+        <div class="metric-card"><div class="metric-label">Remaining</div><div class="metric-value">${data.total - data.mainstreamed}<span class="metric-pct" style="color:#999">${100-pct}%</span></div></div>`;
+
+      // Chart 1: donut per session
+      const sessRows = [['Session','Mainstreamed',{role:'style'},'Remaining',{role:'style'}]];
+      Object.entries(data.bySession).forEach(([sid, v]) => {
+        sessRows.push([data.sessionNames[sid] || `Session ${sid}`, v.mainstreamed, C.mainstreamed, v.remaining, C.remaining]);
+      });
+      if (sessRows.length > 1) {
+        drawDonut('chartMain1', [['Status','Count'], ['Mainstreamed', data.mainstreamed], ['Remaining', data.total - data.mainstreamed]], [C.mainstreamed, C.remaining]);
+      }
+
+      // Chart 2: stacked bar by level
+      const lvlRows = [['Level','Mainstreamed','Remaining']];
+      ['L1','L2','L3'].forEach(lv => {
+        const v = data.byLevel[lv];
+        lvlRows.push([lv, v.mainstreamed, v.remaining]);
+      });
+      drawStackedBar('chartMain2', lvlRows, [C.mainstreamed, C.remaining]);
+
+      // Chart 3: 100% stacked by grade
+      const grades = ['Balvatika','1','2','3','4','5','6','7','8'];
+      const gradeRows = [['Grade','Mainstreamed %','Remaining %']];
+      grades.forEach(g => {
+        const v = data.byGrade[g] || {mainstreamed:0,remaining:0};
+        const tot = v.mainstreamed + v.remaining;
+        gradeRows.push([g === 'Balvatika' ? 'Blvt' : `Gr ${g}`,
+          tot ? Math.round(v.mainstreamed/tot*100) : 0,
+          tot ? Math.round(v.remaining/tot*100) : 0]);
+      });
+      drawStackedBar('chartMain3', gradeRows, [C.mainstreamed, C.remaining], true);
+    })
+    .getMainstreamingData(mainScope, selectedSession || null, null);
+}
+
+// ── Section 2: LaRL ────────────────────────────────────────────
+function renderLaRL() {
+  google.script.run
+    .withSuccessHandler(data => {
+      const { total, atRightLevel, movedToRightLevel, stillMisplaced, byExpectedGroup, trend } = data;
+      const pctAt = total ? Math.round(atRightLevel/total*100) : 0;
+      const misplaced = atRightLevel - movedToRightLevel; // were always at right level
+      document.getElementById('larlMetrics').innerHTML = `
+        <div class="metric-card"><div class="metric-label">At Right Level</div><div class="metric-value">${atRightLevel}<span class="metric-pct" style="color:${C.atLevel}">${pctAt}%</span></div></div>
+        <div class="metric-card"><div class="metric-label">Moved to Right Level</div><div class="metric-value">${movedToRightLevel}</div><div class="metric-sub">${total ? Math.round(movedToRightLevel/(stillMisplaced+movedToRightLevel||1)*100) : 0}% of previously misplaced</div></div>
+        <div class="metric-card"><div class="metric-label">Still Misplaced</div><div class="metric-value">${stillMisplaced}<span class="metric-pct" style="color:${C.misplaced}">${total ? Math.round(stillMisplaced/total*100) : 0}%</span></div></div>`;
+
+      drawDonut('chartLaRL1',
+        [['Status','Count'],['At Right Level', atRightLevel],['Not Yet', stillMisplaced]],
+        [C.atLevel, C.misplaced]);
+
+      // Line chart: trend
+      const trendRows = [['Month','% At Right Level']];
+      trend.forEach(t => trendRows.push([`Month ${t.month}`, t.pct]));
+      drawLineChart('chartLaRL2', trendRows, [C.atLevel]);
+
+      // Stacked bar: movement by expected level group
+      const groupRows = [['Level Group','Moved to Right Level','Still Misplaced']];
+      ['L1','L2','L3'].forEach(lv => {
+        const g = byExpectedGroup[lv];
+        groupRows.push([`${lv} (${lv==='L1'?'Gr1-3':lv==='L2'?'Gr4-5':'Gr6-8'})`, g.moved, g.misplaced]);
+      });
+      drawStackedBar('chartLaRL3', groupRows, [C.atLevel, C.misplaced]);
+    })
+    .getLaRLData(larlScope, selectedSession || null, 3);
+}
+
+// ── Section 3: Outcomes ────────────────────────────────────────
+function renderOutcomes() {
+  google.script.run
+    .withSuccessHandler(data => {
+      const { byMonth, byLevel, avgSubjectScores } = data;
+      const totals = { promoted:0, retained_progressing:0, retained_floor:0, relegated:0 };
+      Object.values(byMonth).forEach(m => {
+        Object.keys(totals).forEach(k => { totals[k] += m[k]||0; });
+      });
+      const grand = Object.values(totals).reduce((a,b) => a+b, 0) || 1;
+
+      document.getElementById('outMetrics').innerHTML = `
+        <div class="metric-card"><div class="metric-label">Promoted</div><div class="metric-value" style="color:${C.promoted}">${totals.promoted}</div><div class="metric-sub">${Math.round(totals.promoted/grand*100)}%</div></div>
+        <div class="metric-card"><div class="metric-label">Retained Progressing</div><div class="metric-value" style="color:${C.retainedProg}">${totals.retained_progressing}</div><div class="metric-sub">${Math.round(totals.retained_progressing/grand*100)}%</div></div>
+        <div class="metric-card"><div class="metric-label">Retained Floor</div><div class="metric-value" style="color:#999">${totals.retained_floor}</div><div class="metric-sub">${Math.round(totals.retained_floor/grand*100)}%</div></div>
+        <div class="metric-card"><div class="metric-label">Relegated</div><div class="metric-value" style="color:${C.relegated}">${totals.relegated}</div><div class="metric-sub">${Math.round(totals.relegated/grand*100)}%</div></div>`;
+
+      // Avg subject scores per level cards
+      let subjHtml = '';
+      ['L1','L2','L3'].forEach(lv => {
+        const s = avgSubjectScores[lv];
+        subjHtml += `<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:#888;margin-bottom:6px">${lv} — Avg Scores</div><div class="metric-row">`;
+        ['Hindi','English','Numeracy'].forEach(subj => {
+          const v = s[subj];
+          subjHtml += `<div class="metric-card"><div class="metric-label">${subj}</div><div class="metric-value" style="font-size:20px">${v !== null ? v : '—'}</div></div>`;
+        });
+        subjHtml += '</div></div>';
+      });
+      document.getElementById('outSubjCards').innerHTML = subjHtml;
+
+      // Chart 1: stacked bar by month
+      const m1 = [['Month','Promoted','Retained Progressing','Retained Floor','Relegated']];
+      [1,2,3].forEach(m => {
+        const d = byMonth[m];
+        m1.push([`Month ${m}`, d.promoted||0, d.retained_progressing||0, d.retained_floor||0, d.relegated||0]);
+      });
+      drawStackedBar('chartOut1', m1, [C.promoted, C.retainedProg, C.retainedFloor, C.relegated]);
+
+      // Chart 2: stacked bar by level
+      const m2 = [['Level','Promoted','Retained Progressing','Retained Floor','Relegated']];
+      ['L1','L2','L3'].forEach(lv => {
+        const d = byLevel[lv];
+        m2.push([lv, d.promoted||0, d.retained_progressing||0, d.retained_floor||0, d.relegated||0]);
+      });
+      drawStackedBar('chartOut2', m2, [C.promoted, C.retainedProg, C.retainedFloor, C.relegated]);
+    })
+    .getOutcomesData(selectedSession || null);
+}
+
+// ── Section 4: Achievement Ratio ───────────────────────────────
+function renderAchievement() {
+  google.script.run
+    .withSuccessHandler(data => {
+      const { weeklyRatios, currentRatios, totalRatio, weeks } = data;
+      const subjColors = { Hindi: C.hindi, English: C.english, Numeracy: C.numeracy };
+
+      let html = `
+        <div class="achieve-top">
+          <div class="big">${totalRatio}%</div>
+          <div class="label">Overall Achievement Ratio — ${achieveLevel}</div>
+        </div>
+        <div class="subj-cards">`;
+
+      ['Hindi','English','Numeracy'].forEach(s => {
+        const r = currentRatios[s];
+        const dir = r.change >= 0 ? 'up' : 'down';
+        const arrow = r.change >= 0 ? '↑' : '↓';
+        html += `<div class="subj-card">
+          <div class="subj-name">${s}</div>
+          <div class="subj-pct" style="color:${subjColors[s]}">${r.ratio}%</div>
+          <div class="subj-change ${dir}">${arrow} ${Math.abs(r.change)}% this week</div>
+        </div>`;
+      });
+
+      html += `</div>
+        <div class="chart-card"><div class="chart-card-title">Cumulative Achievement — ${achieveLevel}</div><div class="chart-container" id="chartAch1" style="height:240px"></div></div>
+        <div class="chart-card"><div class="chart-card-title">Rate of Change by Week — ${achieveLevel}</div><div class="chart-container" id="chartAch2" style="height:240px"></div></div>`;
+
+      document.getElementById('achieveContent').innerHTML = html;
+
+      // Cumulative line chart
+      const lineRows = [['Week','Hindi','English','Numeracy']];
+      weeks.forEach(w => {
+        lineRows.push([
+          `W${w}`,
+          weeklyRatios['Hindi'][w] ?? 0,
+          weeklyRatios['English'][w] ?? 0,
+          weeklyRatios['Numeracy'][w] ?? 0
+        ]);
+      });
+      drawMultiLine('chartAch1', lineRows, [C.hindi, C.english, C.numeracy]);
+
+      // Rate of change bar chart
+      const rateRows = [['Week','Hindi','English','Numeracy']];
+      for (let i = 1; i < weeks.length; i++) {
+        const w = weeks[i], pw = weeks[i-1];
+        rateRows.push([
+          `W${w}`,
+          (weeklyRatios['Hindi'][w]??0) - (weeklyRatios['Hindi'][pw]??0),
+          (weeklyRatios['English'][w]??0) - (weeklyRatios['English'][pw]??0),
+          (weeklyRatios['Numeracy'][w]??0) - (weeklyRatios['Numeracy'][pw]??0)
+        ]);
+      }
+      drawGroupedBar('chartAch2', rateRows, [C.hindi, C.english, C.numeracy]);
+    })
+    .getAchievementRatioData(achieveLevel, selectedSession || null);
+}
+
+// ── Scope / level toggle handlers ─────────────────────────────
+function setScope(section, scope) {
+  if (section === 'main') { mainScope = scope; renderMainstreaming(); }
+  if (section === 'larl') { larlScope = scope; renderLaRL(); }
+  // Re-render skeleton to update active toggle classes
+  document.querySelectorAll(`#${section==='main'?'s1':'s2'} .toggle-btn`).forEach(b => {
+    b.classList.toggle('active', b.textContent.toLowerCase().includes(scope));
+  });
+}
+
+function setAchieveLevel(level) {
+  achieveLevel = level;
+  document.querySelectorAll('.level-btn').forEach(b => b.classList.toggle('active', b.textContent === level));
+  renderAchievement();
+}
+
+// ── Chart helpers ──────────────────────────────────────────────
+function drawDonut(containerId, rows, colors) {
+  const data = google.visualization.arrayToDataTable(rows);
+  new google.visualization.PieChart(document.getElementById(containerId)).draw(data, {
+    pieHole: 0.45, pieSliceText: 'value',
+    colors, legend: { position: 'bottom', textStyle: { fontSize: 12 } },
+    chartArea: { width: '90%', height: '80%' },
+    tooltip: { text: 'both' }, backgroundColor: 'transparent'
+  });
+}
+
+function drawStackedBar(containerId, rows, colors, isPercent) {
+  const data = google.visualization.arrayToDataTable(rows);
+  new google.visualization.BarChart(document.getElementById(containerId)).draw(data, {
+    isStacked: isPercent ? 'percent' : true,
+    colors, legend: { position: 'bottom', textStyle: { fontSize: 11 } },
+    chartArea: { width: '65%', height: '80%' },
+    hAxis: { format: isPercent ? '#\'%\'' : undefined, minValue: 0 },
+    backgroundColor: 'transparent', bar: { groupWidth: '60%' }
+  });
+}
+
+function drawLineChart(containerId, rows, colors) {
+  const data = google.visualization.arrayToDataTable(rows);
+  new google.visualization.LineChart(document.getElementById(containerId)).draw(data, {
+    colors, legend: { position: 'none' },
+    chartArea: { width: '80%', height: '75%' },
+    vAxis: { minValue: 0, maxValue: 100, format: '#\'%\'' },
+    lineWidth: 2, pointSize: 5,
+    areaOpacity: 0.12,
+    backgroundColor: 'transparent'
+  });
+}
+
+function drawMultiLine(containerId, rows, colors) {
+  const data = google.visualization.arrayToDataTable(rows);
+  new google.visualization.LineChart(document.getElementById(containerId)).draw(data, {
+    colors, legend: { position: 'bottom', textStyle: { fontSize: 12 } },
+    chartArea: { width: '80%', height: '70%' },
+    vAxis: { minValue: 0, maxValue: 100, format: '#\'%\'' },
+    lineWidth: 2, pointSize: 4, backgroundColor: 'transparent'
+  });
+}
+
+function drawGroupedBar(containerId, rows, colors) {
+  const data = google.visualization.arrayToDataTable(rows);
+  new google.visualization.ColumnChart(document.getElementById(containerId)).draw(data, {
+    colors, legend: { position: 'bottom', textStyle: { fontSize: 12 } },
+    chartArea: { width: '80%', height: '70%' },
+    vAxis: { format: '#\'%\'', baselineColor: '#666' },
+    backgroundColor: 'transparent', bar: { groupWidth: '70%' }
+  });
+}
+</script>
+</body>
+</html>
