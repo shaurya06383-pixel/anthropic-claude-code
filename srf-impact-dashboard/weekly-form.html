@@ -114,11 +114,13 @@
 
   function onSchoolChange() {
     state.schoolId = document.getElementById('schoolSelect').value;
+    console.log('onSchoolChange fired, schoolId:', state.schoolId, 'allSessions:', state.allSessions);
     const sel = document.getElementById('sessionSelect');
     if (!state.schoolId) { sel.innerHTML = '<option value="">Select school first</option>'; return; }
     const sessions = (state.allSessions || []).filter(
       s => String(s.school_id) === String(state.schoolId)
     );
+    console.log('filtered sessions:', sessions);
     state.sessions = sessions;
     sel.innerHTML = '<option value="">— Select Session —</option>' +
       sessions.map(s => `<option value="${s.session_id}">Session ${s.session_id} (${s.volunteer_name})</option>`).join('');
