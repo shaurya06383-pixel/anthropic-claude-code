@@ -49,6 +49,7 @@ function setupDatabase() {
 
   _populateCompetencyMaster(ss.getSheetByName('competency_master'));
   _seedSchools(ss.getSheetByName('schools'));
+  _seedSampleData(ss);
 
   SpreadsheetApp.flush();
   Logger.log('Setup complete.');
@@ -172,6 +173,28 @@ function _seedSchools(sheet) {
     [5, 'Rajkiya Vidyalaya, Greater Noida',        'Greater Noida'],
   ];
   sheet.getRange(2, 1, schools.length, 3).setValues(schools);
+}
+
+function _seedSampleData(ss) {
+  // Seed one test session + 3 students + enrollments for school 1 so forms work immediately.
+  const today = new Date().toISOString().slice(0, 10);
+  const endDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  ss.getSheetByName('sessions').getRange(2, 1, 1, 5).setValues([
+    [1, 1, 'Test Volunteer', today, endDate]
+  ]);
+
+  ss.getSheetByName('students').getRange(2, 1, 3, 6).setValues([
+    [1, 1, 'Aarav Sharma',  'Male',   '2', '2019-04-10'],
+    [2, 1, 'Priya Verma',   'Female', '3', '2018-07-22'],
+    [3, 1, 'Rahul Kumar',   'Male',   '5', '2016-11-05'],
+  ]);
+
+  ss.getSheetByName('enrollments').getRange(2, 1, 3, 7).setValues([
+    [1, 1, 1, 'L1', 4, 5, 3],
+    [2, 1, 2, 'L1', 6, 7, 5],
+    [3, 1, 3, 'L2', 7, 6, 8],
+  ]);
 }
 
 // ============================================================
